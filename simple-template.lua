@@ -243,12 +243,16 @@ local function validate_undefined_policy(tbl, errlevel)
     end
 end
 
+local UNDEFINED_POLICY_DEFAULTS = {action = "error"}
+
 local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
     local escape_rules = opt.escape_rules
-    local undefined_policy = opt.undefined_policy
+    local undefined_policy = opt.undefined_policy or UNDEFINED_POLICY_DEFAULTS
+    validate_undefined_policy(undefined_policy, errlevel + 1)
+    local allow_multiblock_trailing = opt.allow_multiblock_trailing or false
+
     local errlevel2 = errlevel + 2
     for line in line_iter do
-        local block = false
         local pattern = "((.-)%-%-%[%[( *)(%a*)@@([^%s@]+)@@(%a*)( *)%]%])"
         local w = line:gsub(pattern, function(chunk, start, lspaces, lesc, marker, resc, rspaces)
             local replacement = loaded_vars[marker]
@@ -289,7 +293,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                     end
                 end
 
-                if start == "" or start:find("%S") ~= nil then
+                if #replacement == 1 or start:find("%S") ~= nil then
                     if #replacement > 1 then
                         error("Got " .. #replacement .. " lines in an inline expansion", errlevel2) 
                     elseif lesc ~= "" then
@@ -299,8 +303,8 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                     end
                 else
                     local parts = {}
-                    if line:len() > chunk:len() then
-                        error("Trailing text after block: '" .. line:sub(chunk:len()) .. "'", errlevel2)
+                    if not allow_multiblock_trailing and line:len() > chunk:len() then
+                        error("Trailing text after block: '" .. line:sub(chunk:len() + 1) .. "'", errlevel2)
                     end
                     if lesc ~= "" then
                         for _, rep in ipairs(replacement) do
@@ -319,8 +323,6 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
     end
 end
 
-local UNDEFINED_POLICY_DEFAULTS = {action = "error"}
-
 function M.render(template_path, out_path, sources, opt)
     opt = opt or {}
     local escape = opt.escape or {}
@@ -335,10 +337,7 @@ function M.render(template_path, out_path, sources, opt)
     for name, rules in pairs(escape) do
         escape_rules[name] = load_escape_rules(rules, errlevel + 1)
     end
-
     opt.escape_rules = escape_rules
-    opt.undefined_policy = opt.undefined_policy or UNDEFINED_POLICY_DEFAULTS
-    validate_undefined_policy(opt.undefined_policy, errlevel + 1)
 
     local out_write_name = out_path .. ".ttmpl~"
     local out = assert(io.open(out_write_name, "wb"))
@@ -378,10 +377,7 @@ function M.render_string(template, sources, opt)
     for name, rules in pairs(escape) do
         escape_rules[name] = load_escape_rules(rules, errlevel + 1)
     end
-
     opt.escape_rules = escape_rules
-    opt.undefined_policy = opt.undefined_policy or UNDEFINED_POLICY_DEFAULTS
-    validate_undefined_policy(opt.undefined_policy, errlevel + 1)
 
     local write = function(this, ...)
         for i = 1, select("#", ...) do

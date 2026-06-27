@@ -47,13 +47,20 @@ Rules:
 ### Inline vs. block
 
 - **Inline** — a marker with other text on its line is replaced in place; surrounding text
-  is preserved. A multi-line value uses only its first line.
-- **Block** — a marker alone on its (indented) line expands to *every* line of its value,
-  each re-indented to the marker's column. Trailing text after a block marker is an error.
+  is preserved. A multi-line value uses only its first line. A line may carry **any number**
+  of inline markers; each is substituted independently (including its own escaping).
+- **Block** — a marker *alone* on its line (whitespace only on either side) expands to
+  *every* line of its value, each re-indented to the marker's column — column 0 included.
+  By default, trailing text after a block marker is an error; set
+  `allow_multiblock_trailing = true` to append it to the last expanded line instead.
 
 ```lua
 T.render_string("  --[[ @@ITEMS@@ ]]\n", { ITEMS = { "a", "b" } })
 --> "  a\n  b\n"
+
+-- Several markers on one line:
+T.render_string("v=--[[ @@MAJ@@ ]].--[[ @@MIN@@ ]]\n", { MAJ = "5", MIN = "2" })
+--> "v=5.2\n"
 ```
 
 ## API
@@ -70,8 +77,9 @@ including handling of a template whose final line has no trailing newline.
 
 ```lua
 opt = {
-  escape           = { <name> = <rule|rule-list>, ... },
-  undefined_policy = { action = "error"|"quiet"|"warn", value = "empty"|"keep"|<callable> },
+  escape                    = { <name> = <rule|rule-list>, ... },
+  undefined_policy          = { action = "error"|"quiet"|"warn", value = "empty"|"keep"|<callable> },
+  allow_multiblock_trailing = false,  -- append text after a block marker instead of erroring
 }
 ```
 
@@ -135,11 +143,11 @@ T.render_string("x=--[[ @@MISSING@@ ]]y\n", {},
 
 ## Limitations
 
-- **One marker per line.** Only the first marker on a line is substituted today; a second
-  marker is currently emitted verbatim. Put one value per line, or pre-assemble the value
-  in Lua, until multi-marker support lands.
 - **No control flow** — by design. Use `as_callback` / arrays for anything dynamic.
 - **ASCII escaping only** — escaping non-ASCII bytes is out of scope.
+- **Block markers must stand alone.** A multi-line value only block-expands when its marker
+  is the sole non-whitespace on the line; used inline (with other text or another marker),
+  a multi-line value is an error. Pre-assemble the value or give the marker its own line.
 
 ## Development
 

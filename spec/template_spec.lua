@@ -292,5 +292,45 @@ describe("simple-template", function()
     it("does not break single-marker block expansion", function()
       assert.are.equal("  a\n  b\n", rs("  --[[ @@A@@ ]]\n", { A = { "a", "b" } }))
     end)
+
+    -- Two markers separated only by whitespace are both inline. The naive
+    -- per-match block heuristic misreads the second marker's all-space prefix
+    -- as a block indent; this pins the inline result.
+    it("renders two space-separated markers inline", function()
+      assert.are.equal("a   b\n", rs("--[[ @@A@@ ]]   --[[ @@B@@ ]]\n", { A = "a", B = "b" }))
+    end)
+  end)
+
+  -- Block classification depends only on a marker being alone on its line, not
+  -- on the indent amount: column 0 expands just like any indented marker.
+  describe("block classification #multimarker", function()
+    it("block-expands a lone marker at column 0", function()
+      assert.are.equal("a\nb\n", rs("--[[ @@A@@ ]]\n", { A = { "a", "b" } }))
+    end)
+
+    it("still expands an indented lone marker", function()
+      assert.are.equal("  a\n  b\n", rs("  --[[ @@A@@ ]]\n", { A = { "a", "b" } }))
+    end)
+  end)
+
+  -- Trailing text after a block marker.
+  describe("block trailing text #multimarker", function()
+    it("errors by default", function()
+      assert.is_true(contains(
+        errmsg(function() rs("  --[[ @@A@@ ]] trailing\n", { A = { "x", "y" } }) end),
+        "Trailing text after block: ' trailing'"))
+    end)
+
+    it("appends trailing text to the last line when allowed", function()
+      assert.are.equal("  x\n  y trailing\n",
+        rs("  --[[ @@A@@ ]] trailing\n", { A = { "x", "y" } },
+          { allow_multiblock_trailing = true }))
+    end)
+
+    it("allows a clean block when the flag is set (no trailing text)", function()
+      assert.are.equal("  x\n  y\n",
+        rs("  --[[ @@A@@ ]]\n", { A = { "x", "y" } },
+          { allow_multiblock_trailing = true }))
+    end)
   end)
 end)
