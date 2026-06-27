@@ -234,10 +234,63 @@ describe("simple-template", function()
     end)
   end)
 
-  -- Known limitation: only the first marker on a line is substituted. Recorded
-  -- as pending so it surfaces in the report without failing the suite. Remove
-  -- the `pending` and assert the rendered output once multi-marker support lands.
-  describe("multiple markers per line", function()
-    pending("substitutes every marker on a line (not yet supported)")
+  -- Acceptance spec for multi-marker support. These define the intended
+  -- behaviour and are RED against the current single-marker implementation
+  -- (only the first marker on a line is substituted today). They go green once
+  -- the render core substitutes every marker on a line. Tagged #multimarker so
+  -- they can be run in isolation (`busted --tags=multimarker`) or excluded from
+  -- CI (`busted --exclude-tags=multimarker`) until the feature lands.
+  describe("multiple markers per line #multimarker", function()
+    it("substitutes two inline markers on one line", function()
+      assert.are.equal('{"x":1, "y":2}\n',
+        rs('{"x":--[[ @@X@@ ]], "y":--[[ @@Y@@ ]]}\n', { X = "1", Y = "2" }))
+    end)
+
+    it("substitutes three markers (assembled value)", function()
+      assert.are.equal("v=5.2.1\n",
+        rs("v=--[[ @@MAJ@@ ]].--[[ @@MIN@@ ]].--[[ @@PATCH@@ ]]\n",
+          { MAJ = "5", MIN = "2", PATCH = "1" }))
+    end)
+
+    it("substitutes adjacent markers with no separator", function()
+      assert.are.equal("ab\n", rs("--[[ @@A@@ ]]--[[ @@B@@ ]]\n", { A = "a", B = "b" }))
+    end)
+
+    it("preserves text before, between, and after markers", function()
+      assert.are.equal("pre a mid b post\n",
+        rs("pre --[[ @@A@@ ]] mid --[[ @@B@@ ]] post\n", { A = "a", B = "b" }))
+    end)
+
+    it("applies per-marker escaping independently", function()
+      assert.are.equal('"a":"x\\"", "b":"y\\""\n',
+        rs('"a":"--[[ j@@A@@j ]]", "b":"--[[ j@@B@@j ]]"\n',
+          { A = 'x"', B = 'y"' },
+          { escape = { j = { method = "prefix", prefix = "\\", characters = '"' } } }))
+    end)
+
+    it("mixes an escaped and a plain marker on one line", function()
+      assert.are.equal('raw=a" esc=b\\"\n',
+        rs('raw=--[[ @@A@@ ]] esc=--[[ j@@B@@j ]]\n',
+          { A = 'a"', B = 'b"' },
+          { escape = { j = { method = "prefix", prefix = "\\", characters = '"' } } }))
+    end)
+
+    it("still errors on an unknown marker among known ones (default policy)", function()
+      assert.is_true(contains(errmsg(function()
+        rs("--[[ @@A@@ ]] --[[ @@NOPE@@ ]]\n", { A = "a" })
+      end), "Unknown template var: NOPE"))
+    end)
+
+    it("applies the undefined policy per marker", function()
+      assert.are.equal("a= b=2\n",
+        rs("a=--[[ @@MISSING@@ ]] b=--[[ @@B@@ ]]\n", { B = "2" },
+          { undefined_policy = { action = "quiet", value = "empty" } }))
+    end)
+
+    -- Regression guard: a lone marker must keep block-expanding once the core
+    -- is rewritten to handle several markers per line.
+    it("does not break single-marker block expansion", function()
+      assert.are.equal("  a\n  b\n", rs("  --[[ @@A@@ ]]\n", { A = { "a", "b" } }))
+    end)
   end)
 end)

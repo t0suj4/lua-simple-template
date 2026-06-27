@@ -246,72 +246,76 @@ end
 local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
     local escape_rules = opt.escape_rules
     local undefined_policy = opt.undefined_policy
+    local errlevel2 = errlevel + 2
     for line in line_iter do
-        local pattern = "^(.-)%-%-%[%[( *)(%a*)@@([^%s@]+)@@(%a*)( *)%]%](.*)$"
-        local _, _, start, lspaces, lesc, marker, resc, rspaces, rest = line:find(pattern)
-        if not start then
-            sink:write(line, "\n")
-        else
+        local block = false
+        local pattern = "((.-)%-%-%[%[( *)(%a*)@@([^%s@]+)@@(%a*)( *)%]%])"
+        local w = line:gsub(pattern, function(chunk, start, lspaces, lesc, marker, resc, rspaces)
             local replacement = loaded_vars[marker]
             local esc_rules = escape_rules[lesc]
             if lspaces and lspaces:len() > 1 or rspaces and rspaces:len() > 1 then
-                error("At most 1 separating space allowed, to disable pattern delete a @", errlevel)
+                error("At most 1 separating space allowed, to disable pattern delete a @", errlevel2)
             elseif lesc ~= resc then
-                error("Escape marker differs '" .. lesc .. "' ~= '" .. resc .. "'", errlevel)
+                error("Escape marker differs '" .. lesc .. "' ~= '" .. resc .. "'", errlevel2)
             elseif lesc ~= "" and not esc_rules then
-                error("Unknown escape rule " .. lesc, errlevel)
+                error("Unknown escape rule " .. lesc, errlevel2)
             end
             if not replacement then
                 if undefined_policy.action == "error" then
-                    error("Unknown template var: " .. marker, errlevel)
+                    error("Unknown template var: " .. marker, errlevel2)
                 elseif undefined_policy.action == "warn" then
                     print("Unknown template var: " .. marker)
                 elseif undefined_policy.action == "quiet" then
                     -- quiet
                 end
                 if undefined_policy.value == "empty" then
-                    sink:write(start, rest, "\n")
+                    return start
                 elseif undefined_policy.value == "keep" then
-                    sink:write(line, "\n")
+                    return chunk
                 else
                     -- callback
-                    replacement = undefined_policy.value(start, marker, rest, lesc, esc_rules, line)
+                    replacement = undefined_policy.value(start, marker, lesc, esc_rules, chunk, line)
                     if type(replacement) ~= "table" then
-                        error("Novar callback should return a table", errlevel)
+                        error("Novar callback should return a table", errlevel2)
                     end
                 end
             end
             if replacement then
                 if replacement[1] == AS_CALLBACK then
-                    replacement = replacement[2](start, marker, rest, lesc, esc_rules, line)
+                    replacement = replacement[2](start, marker, lesc, esc_rules, chunk, line)
                     -- Not type checking contents here
                     if type(replacement) ~= "table" then
-                        error("Var callback should return a table", errlevel)
+                        error("Var callback should return a table", errlevel2)
                     end
                 end
 
-                if start:find("%S") ~= nil then
-                    if lesc ~= "" then
-                        sink:write(start, apply_escaping(replacement[1], esc_rules), rest, "\n")
+                if start == "" or start:find("%S") ~= nil then
+                    if #replacement > 1 then
+                        error("Got " .. #replacement .. " lines in an inline expansion", errlevel2) 
+                    elseif lesc ~= "" then
+                        return start .. apply_escaping(replacement[1], esc_rules)
                     else
-                        sink:write(start, replacement[1], rest, "\n")
+                        return start .. replacement[1]
                     end
                 else
-                    if rest ~= "" then
-                        error("Trailing text after block: '" .. rest .. "'", errlevel)
+                    local parts = {}
+                    if line:len() > chunk:len() then
+                        error("Trailing text after block: '" .. line:sub(chunk:len()) .. "'", errlevel2)
                     end
                     if lesc ~= "" then
                         for _, rep in ipairs(replacement) do
-                            sink:write(start, apply_escaping(rep, esc_rules), "\n")
+                            parts[#parts + 1] = start .. apply_escaping(rep, esc_rules)
                         end
                     else
                         for _, rep in ipairs(replacement) do
-                            sink:write(start, rep, "\n")
+                            parts[#parts + 1] = start .. rep
                         end
                     end
+                    return table.concat(parts, "\n")
                 end
             end
-        end
+        end)
+        sink:write(w, "\n")
     end
 end
 
