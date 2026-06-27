@@ -272,9 +272,9 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                 -- quiet
             end
             if undefined_policy.value == "empty" then
-                return ""
+                return {""}
             elseif undefined_policy.value == "keep" then
-                return snippet
+                return {snippet}
             else
                 -- callback
                 replacement = undefined_policy.value(start, marker, esc, esc_rules, chunk, line, snippet)
@@ -301,9 +301,9 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             if l > 1 then
                 error("Got " .. #replacement .. " lines in an inline expansion", errlevel2) 
             elseif esc ~= "" then
-                return apply_escaping(replacement[1], esc_rules)
+                return {apply_escaping(replacement[1], esc_rules)}
             else
-                return replacement[1]
+                return {replacement[1]}
             end
         else
             local parts = {}
@@ -349,18 +349,13 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                     local start = line:sub(pos, at - 1)
                     local snippet = line:sub(at, endpos - 1)
                     local value = process_line(chunk, start, lesc, marker, snippet)
-                    if type(value) == "table" then
-                        local l = #value
-                        for i = 1, l do
-                            out[#out + 1] = start
-                            out[#out + 1] = value[i]
-                            if i < l then
-                                out[#out + 1] = "\n"
-                            end
-                        end
-                    else
+                    local l = #value
+                    for i = 1, l do
                         out[#out + 1] = start
-                        out[#out + 1] = value
+                        out[#out + 1] = value[i]
+                        if i < l then
+                            out[#out + 1] = "\n"
+                        end
                     end
                     pos = endpos
                     at = line:find("--[[", pos, true)
