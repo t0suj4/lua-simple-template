@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+jobs:
+  test:
+    name: test (Lua ${{ matrix.lua }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        lua: ["5.1", "5.2", "5.3", "5.4", "luajit"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Lua ${{ matrix.lua }}
+        uses: leafo/gh-actions-lua@v11
+        with:
+          luaVersion: ${{ matrix.lua }}
+
+      - name: Install LuaRocks
+        uses: leafo/gh-actions-luarocks@v5
+
+      - name: Install dependencies
+        run: luarocks install busted
+
+      - name: Lint rockspec
+        run: luarocks lint *.rockspec
+
+      - name: Run tests
+        run: busted --verbose
