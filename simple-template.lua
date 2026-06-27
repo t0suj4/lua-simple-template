@@ -244,8 +244,7 @@ local function validate_undefined_policy(tbl, errlevel)
 end
 
 local UNDEFINED_POLICY_DEFAULTS = {action = "error"}
-        
-local SCAN_PATTERN = "((.-)%-%-%[%[( *)(%a*)@@([^%s@]+)@@(%a*)( *)%]%])"
+
 local ANCHORED = "^%-%-%[%[( *)(%a*)@@([^%s@]+)@@(%a*)( *)%]%]()"
 
 local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
@@ -257,7 +256,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
     local errlevel2 = errlevel + 2
     local line
 
-    local function process_line(chunk, start, esc, marker, snippet, whitespace)
+    local function resolve(loaded_vars, escape_rules, esc, marker, ctx)
         local replacement = loaded_vars[marker]
         local esc_rules = escape_rules[esc]
 
@@ -272,12 +271,12 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                 -- quiet
             end
             if undefined_policy.value == "empty" then
-                return {""}
+                return nil, nil, {""}
             elseif undefined_policy.value == "keep" then
-                return {snippet}
+                return nil, nil, {ctx.snippet}
             else
                 -- callback
-                replacement = undefined_policy.value(start, marker, esc, esc_rules, chunk, line, snippet)
+                replacement = undefined_policy.value(ctx.start, marker, esc, esc_rules, ctx.chunk, line, ctx.snippet)
                 if type(replacement) ~= "table" then
                     error("Novar callback should return a table", errlevel2)
                 end
@@ -289,17 +288,27 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                 error("Got callback chain too deep", errlevel2)
             end
             limit = limit - 1
-            replacement = replacement[2](start, marker, esc, esc_rules, chunk, line, snippet)
+            replacement = replacement[2](ctx.start, marker, esc, esc_rules, ctx.chunk, line, ctx.snippet)
             -- Not type checking contents here
             if type(replacement) ~= "table" then
                 error("Var callback should return a table", errlevel2)
             end
         end
+        return replacement, esc_rules, nil
+    end
+
+    local function process_line(chunk, start, esc, marker, snippet, whitespace)
+
+        local ctx = {chunk=chunk, start=start, snippet=snippet}
+        local replacement, esc_rules, retval = resolve(loaded_vars, escape_rules, esc, marker, ctx)
+        if retval then
+            return retval
+        end
 
         local l = #replacement
         if l == 1 or whitespace then
             if l > 1 then
-                error("Got " .. #replacement .. " lines in an inline expansion", errlevel2) 
+                error("Got " .. #replacement .. " lines in an inline expansion", errlevel2)
             elseif esc ~= "" then
                 return {apply_escaping(replacement[1], esc_rules)}
             else
