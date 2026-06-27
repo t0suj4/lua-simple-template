@@ -323,8 +323,14 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         end
     end
 
+    local function create_scanner(line, pattern)
+        return function(pos)
+            return line:match(pattern, pos)
+        end
+    end
     for l in line_iter do
         line = l
+        local scan = create_scanner(l, ANCHORED)
         -- Eliminate n^2 scan
         local at = line:find("--[[", 1, true)
         if not at then
@@ -332,7 +338,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         else
             local out, pos = {}, 1
             while at do
-                local lspaces, lesc, marker, resc, rspaces, endpos = line:match(ANCHORED, at)
+                local lspaces, lesc, marker, resc, rspaces, endpos = scan(at)
                 if lspaces then
                     if lspaces:len() > 1 or rspaces:len() > 1 then
                         error("At most 1 separating space allowed, to disable pattern delete a @", errlevel)
