@@ -257,7 +257,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
     local errlevel2 = errlevel + 2
     local line
 
-    local function process_line(chunk, start, esc, marker, snippet)
+    local function process_line(chunk, start, esc, marker, snippet, whitespace)
         local replacement = loaded_vars[marker]
         local esc_rules = escape_rules[esc]
 
@@ -297,7 +297,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         end
 
         local l = #replacement
-        if l == 1 or start:find("%S") ~= nil then
+        if l == 1 or whitespace then
             if l > 1 then
                 error("Got " .. #replacement .. " lines in an inline expansion", errlevel2) 
             elseif esc ~= "" then
@@ -348,7 +348,8 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                     local chunk = line:sub(pos, endpos - 1)
                     local start = line:sub(pos, at - 1)
                     local snippet = line:sub(at, endpos - 1)
-                    local value = process_line(chunk, start, lesc, marker, snippet)
+                    local whitespace = start:find("%S") ~= nil
+                    local value = process_line(chunk, start, lesc, marker, snippet, whitespace)
                     local l = #value
                     for i = 1, l do
                         out[#out + 1] = start
