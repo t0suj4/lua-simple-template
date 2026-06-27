@@ -244,6 +244,9 @@ local function validate_undefined_policy(tbl, errlevel)
 end
 
 local UNDEFINED_POLICY_DEFAULTS = {action = "error"}
+        
+local SCAN_PATTERN = "((.-)%-%-%[%[( *)(%a*)@@([^%s@]+)@@(%a*)( *)%]%])"
+local ANCHORED = "^%-%-%[%[( *)(%a*)@@([^%s@]+)@@(%a*)( *)%]%]()"
 
 local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
     local escape_rules = opt.escape_rules
@@ -252,76 +255,116 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
     local allow_multiblock_trailing = opt.allow_multiblock_trailing or false
 
     local errlevel2 = errlevel + 2
-    for line in line_iter do
-        local pattern = "((.-)%-%-%[%[( *)(%a*)@@([^%s@]+)@@(%a*)( *)%]%])"
-        local w = line:gsub(pattern, function(chunk, start, lspaces, lesc, marker, resc, rspaces)
-            if lspaces:len() > 1 or rspaces:len() > 1 then
-                error("At most 1 separating space allowed, to disable pattern delete a @", errlevel2)
-            elseif lesc ~= resc then
-                error("Escape marker differs '" .. lesc .. "' ~= '" .. resc .. "'", errlevel2)
-            end
+    local line
 
-            -- Restate used variables
-            local start, esc, marker, chunk = start, lesc, marker, chunk
-            local replacement = loaded_vars[marker]
-            local esc_rules = escape_rules[esc]
+    local function process_line(chunk, start, esc, marker, snippet)
+        local replacement = loaded_vars[marker]
+        local esc_rules = escape_rules[esc]
 
-            if esc ~= "" and not esc_rules then
-                error("Unknown escape rule " .. esc, errlevel2)
-            elseif not replacement then
-                if undefined_policy.action == "error" then
-                    error("Unknown template var: " .. marker, errlevel2)
-                elseif undefined_policy.action == "warn" then
-                    print("Unknown template var: " .. marker)
-                elseif undefined_policy.action == "quiet" then
-                    -- quiet
-                end
-                if undefined_policy.value == "empty" then
-                    return start
-                elseif undefined_policy.value == "keep" then
-                    return chunk
-                else
-                    -- callback
-                    replacement = undefined_policy.value(start, marker, esc, esc_rules, chunk, line)
-                    if type(replacement) ~= "table" then
-                        error("Novar callback should return a table", errlevel2)
-                    end
-                end
+        if esc ~= "" and not esc_rules then
+            error("Unknown escape rule " .. esc, errlevel2)
+        elseif not replacement then
+            if undefined_policy.action == "error" then
+                error("Unknown template var: " .. marker, errlevel2)
+            elseif undefined_policy.action == "warn" then
+                print("Unknown template var: " .. marker)
+            elseif undefined_policy.action == "quiet" then
+                -- quiet
             end
-            if replacement[1] == AS_CALLBACK then
-                replacement = replacement[2](start, marker, esc, esc_rules, chunk, line)
-                -- Not type checking contents here
+            if undefined_policy.value == "empty" then
+                return ""
+            elseif undefined_policy.value == "keep" then
+                return snippet
+            else
+                -- callback
+                replacement = undefined_policy.value(start, marker, esc, esc_rules, chunk, line, snippet)
                 if type(replacement) ~= "table" then
-                    error("Var callback should return a table", errlevel2)
+                    error("Novar callback should return a table", errlevel2)
                 end
             end
+        end
+        local limit = 50
+        while replacement[1] == AS_CALLBACK do
+            if limit <= 0 then
+                error("Got callback chain too deep", errlevel2)
+            end
+            limit = limit - 1
+            replacement = replacement[2](start, marker, esc, esc_rules, chunk, line, snippet)
+            -- Not type checking contents here
+            if type(replacement) ~= "table" then
+                error("Var callback should return a table", errlevel2)
+            end
+        end
 
-            if #replacement == 1 or start:find("%S") ~= nil then
-                if #replacement > 1 then
-                    error("Got " .. #replacement .. " lines in an inline expansion", errlevel2) 
-                elseif esc ~= "" then
-                    return start .. apply_escaping(replacement[1], esc_rules)
-                else
-                    return start .. replacement[1]
+        local l = #replacement
+        if l == 1 or start:find("%S") ~= nil then
+            if l > 1 then
+                error("Got " .. #replacement .. " lines in an inline expansion", errlevel2) 
+            elseif esc ~= "" then
+                return apply_escaping(replacement[1], esc_rules)
+            else
+                return replacement[1]
+            end
+        else
+            local parts = {}
+            if not allow_multiblock_trailing and line:len() > chunk:len() then
+                error("Trailing text after block: '" .. line:sub(chunk:len() + 1) .. "'", errlevel2)
+            end
+            if esc ~= "" then
+                for _, rep in ipairs(replacement) do
+                    parts[#parts + 1] = apply_escaping(rep, esc_rules)
                 end
             else
-                local parts = {}
-                if not allow_multiblock_trailing and line:len() > chunk:len() then
-                    error("Trailing text after block: '" .. line:sub(chunk:len() + 1) .. "'", errlevel2)
+                for _, rep in ipairs(replacement) do
+                    parts[#parts + 1] = rep
                 end
-                if esc ~= "" then
-                    for _, rep in ipairs(replacement) do
-                        parts[#parts + 1] = start .. apply_escaping(rep, esc_rules)
-                    end
-                else
-                    for _, rep in ipairs(replacement) do
-                        parts[#parts + 1] = start .. rep
-                    end
-                end
-                return table.concat(parts, "\n")
             end
-        end)
-        sink:write(w, "\n")
+            return parts
+        end
+    end
+
+    for l in line_iter do
+        line = l
+        -- Eliminate n^2 scan
+        local at = line:find("--[[", pos, true)
+        if not at then
+            sink:write(line, "\n")
+        else
+            local out, pos = {}, 1
+            while at do
+                local lspaces, lesc, marker, resc, rspaces, endpos = line:match(ANCHORED, at)
+                if lspaces then
+                    if lspaces:len() > 1 or rspaces:len() > 1 then
+                        error("At most 1 separating space allowed, to disable pattern delete a @", errlevel)
+                    elseif lesc ~= resc then
+                        error("Escape marker differs '" .. lesc .. "' ~= '" .. resc .. "'", errlevel)
+                    end
+                    local chunk = line:sub(pos, endpos - 1)
+                    local start = line:sub(pos, at - 1)
+                    local snippet = line:sub(at, endpos - 1)
+                    local value = process_line(chunk, start, lesc, marker, snippet)
+                    if type(value) == "table" then
+                        local l = #value
+                        for i = 1, l do
+                            out[#out + 1] = start
+                            out[#out + 1] = value[i]
+                            if i < l then
+                                out[#out + 1] = "\n"
+                            end
+                        end
+                    else
+                        out[#out + 1] = start
+                        out[#out + 1] = value
+                    end
+                    pos = endpos
+                    at = line:find("--[[", pos, true)
+                else
+                    at = line:find("--[[", pos + 4, true)
+                end
+            end
+            out[#out + 1] = line:sub(pos)
+            sink:write(table.concat(out), "\n")
+        end
     end
 end
 

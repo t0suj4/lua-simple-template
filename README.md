@@ -157,6 +157,7 @@ T.render_string("x=--[[ @@MISSING@@ ]]y\n", {},
 luarocks install busted
 busted              # run the spec
 luarocks lint *.rockspec
+lua bench/bench.lua  # render throughput; ms/render should stay flat across line lengths
 ```
 
 ## License

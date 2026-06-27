@@ -100,13 +100,14 @@ describe("simple-template", function()
       local cb = T.as_callback(function(...) got = { n = select("#", ...), ... }; return { "X" } end)
       rs("  pre --[[ j@@C@@j ]] post\n", { C = cb },
         { escape = { j = { method = "prefix", prefix = "\\", characters = "!" } } })
-      assert.are.equal(6, got.n)
+      assert.are.equal(7, got.n)
       assert.are.equal("  pre ", got[1])                       -- start: text before the marker
       assert.are.equal("C", got[2])                            -- marker name
       assert.are.equal("j", got[3])                            -- escape name (lesc)
       assert.are.equal("table", type(got[4]))                  -- compiled escape rules
       assert.are.equal("  pre --[[ j@@C@@j ]]", got[5])        -- chunk: start .. marker
       assert.are.equal("  pre --[[ j@@C@@j ]] post", got[6])   -- whole line
+      assert.are.equal("--[[ j@@C@@j ]]", got[7])              -- snippet
     end)
 
     it("passes the same argument list to an undefined_policy callback", function()
@@ -116,7 +117,7 @@ describe("simple-template", function()
           got = { n = select("#", ...), ... }; return { "?" }
         end },
       })
-      assert.are.equal(6, got.n)
+      assert.are.equal(7, got.n)
       assert.are.equal("a=", got[1])
       assert.are.equal("MISSING", got[2])
       assert.are.equal("", got[3])
@@ -160,6 +161,32 @@ describe("simple-template", function()
     it("accepts a __call table as a callback", function()
       local ct = setmetatable({}, { __call = function() return { "CT" } end })
       assert.are.equal("v=CT\n", rs("v=--[[ @@C@@ ]]\n", { C = T.as_callback(ct) }))
+    end)
+
+    -- A callback may itself return another callback; the engine trampolines
+    -- until it gets a plain array of lines (bounded against runaway recursion).
+    it("resolves a callback that returns another callback", function()
+      local inner = T.as_callback(function() return { "deep" } end)
+      local outer = T.as_callback(function() return inner end)
+      assert.are.equal("v=deep\n", rs("v=--[[ @@C@@ ]]\n", { C = outer }))
+    end)
+
+    it("resolves a deep callback chain", function()
+      local function chain(n)
+        if n == 0 then return T.as_callback(function() return { "bottom" } end) end
+        return T.as_callback(function() return chain(n - 1) end)
+      end
+      assert.are.equal("v=bottom\n", rs("v=--[[ @@C@@ ]]\n", { C = chain(10) }))
+    end)
+
+    -- Acceptance (red until the depth guard reports itself): an unbounded chain
+    -- must fail with a diagnostic that names the cause, not the misleading
+    -- "inline expansion" / "concatenate a table" fall-through it produces today.
+    it("reports a clear error when the callback chain is too deep", function()
+      local loopcb; loopcb = T.as_callback(function() return loopcb end)
+      local msg = errmsg(function() rs("v=--[[ @@C@@ ]]\n", { C = loopcb }) end)
+      assert.is_true(contains(msg, "callback chain"),
+        "expected a chain-depth diagnostic, got: " .. msg)
     end)
   end)
 
