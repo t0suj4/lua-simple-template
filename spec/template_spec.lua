@@ -21,6 +21,19 @@ local function contains(haystack, needle)
   return haystack:find(needle, 1, true) ~= nil
 end
 
+-- Render under an instruction budget so an accidental infinite loop fails the
+-- test cleanly instead of hanging the whole suite. Runs in a coroutine with a
+-- count hook; if the budget is exhausted the resume returns false and we raise.
+local function rs_bounded(tmpl, sources, opt, budget)
+  local co = coroutine.create(function() return T.render_string(tmpl, sources, opt) end)
+  debug.sethook(co, function() error("instruction budget exceeded (likely infinite loop)") end,
+    "", budget or 2000000)
+  local ok, ret = coroutine.resume(co)
+  debug.sethook(co)
+  assert.is_true(ok, "render did not terminate: " .. tostring(ret))
+  return ret
+end
+
 describe("simple-template", function()
   -- Temp files for the file-based API; cleaned up after each example.
   local tmpfiles
@@ -432,6 +445,26 @@ describe("simple-template", function()
       assert.are.equal("  x\n  y\n",
         rs("  --[[ @@A@@ ]]\n", { A = { "x", "y" } },
           { allow_multiblock_trailing = true }))
+    end)
+  end)
+
+  -- Scanner edge cases around "--[[" that does not form a valid marker. The
+  -- scanner must advance past every false start; a bad rescan stride loops
+  -- forever. Bounded so a regression fails instead of hanging. Tagged #scanner.
+  describe("stray '--[[' sequences #scanner", function()
+    it("leaves a line with two non-marker '--[[' unchanged", function()
+      local tmpl = "x --[[ --[[ y\n"
+      assert.are.equal(tmpl, rs_bounded(tmpl, { V = "1" }))
+    end)
+
+    it("still substitutes a real marker after a stray '--[['", function()
+      assert.are.equal("--[[ oops 5\n",
+        rs_bounded("--[[ oops --[[ @@V@@ ]]\n", { V = "5" }))
+    end)
+
+    it("leaves a lone non-marker '--[[' unchanged", function()
+      local tmpl = 'log("--[[ not a marker")\n'
+      assert.are.equal(tmpl, rs_bounded(tmpl, {}))
     end)
   end)
 end)
