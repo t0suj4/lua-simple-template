@@ -359,7 +359,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                     pos = endpos
                     at = line:find("--[[", pos, true)
                 else
-                    at = line:find("--[[", pos + 4, true)
+                    at = line:find("--[[", at + 4, true)
                 end
             end
             out[#out + 1] = line:sub(pos)
