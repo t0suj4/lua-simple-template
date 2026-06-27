@@ -92,7 +92,7 @@ opt = {
 | `T.as_lines(s)` | splits `s` on newlines into block lines |
 | `T.as_path(path)` | the file's contents, line by line |
 | `{ "a", "b" }` | an explicit array of lines |
-| `T.as_callback(fn)` | `fn(start, marker, lesc, esc_rules, chunk, line)` → array of lines, computed at render time |
+| `T.as_callback(fn)` | a [callback](#callback-arguments) computing an array of lines at render time |
 
 ```lua
 T.render("info.tmpl.json", "info.json", {
@@ -102,6 +102,27 @@ T.render("info.tmpl.json", "info.json", {
   NOTES   = T.as_path("changelog-excerpt.txt"),
 })
 ```
+
+### Callback arguments
+
+A callback — whether from `as_callback` or used as an `undefined_policy.value` (see
+[Undefined variables](#undefined-variables)) — is invoked once per marker occurrence with:
+
+```
+fn(start, marker, esc, esc_rules, chunk, line, snippet)
+```
+
+| # | arg | value |
+| --- | --- | --- |
+| 1 | `start` | text on the line before the marker |
+| 2 | `marker` | the marker name |
+| 3 | `esc` | the escape name flanking the marker (`""` if none) |
+| 4 | `esc_rules` | the compiled escape rules for `esc` (or `nil`) |
+| 5 | `chunk` | `start .. snippet` — everything matched up to and including `]]` |
+| 6 | `line` | the whole line |
+| 7 | `snippet` | just the marker text, `--[[ … ]]` |
+
+It must return an **array of lines** (one element for inline use; several to block-expand).
 
 ## Escaping
 
@@ -133,9 +154,8 @@ By default an unknown marker is an error. `opt.undefined_policy` changes that:
 
 - `action` — `"error"` (default), `"warn"` (print + continue), or `"quiet"`.
 - `value` — what to substitute when not erroring: `"empty"` (drop the marker, keep
-  surrounding text), `"keep"` (leave the original line), or a callable. The callable has the
-  same signature as an [`as_callback`](#sources) source —
-  `fn(start, marker, lesc, esc_rules, chunk, line)` → array of lines.
+  surrounding text), `"keep"` (leave the original line), or a callable with the same
+  [callback arguments](#callback-arguments) as an `as_callback` source.
 
 ```lua
 T.render_string("x=--[[ @@MISSING@@ ]]y\n", {},
