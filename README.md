@@ -92,7 +92,7 @@ opt = {
 | `T.as_lines(s)` | splits `s` on newlines into block lines |
 | `T.as_path(path)` | the file's contents, line by line |
 | `{ "a", "b" }` | an explicit array of lines |
-| `T.as_callback(fn)` | `fn(start, marker, rest, lesc, esc_rules, line)` → array of lines, computed at render time |
+| `T.as_callback(fn)` | `fn(start, marker, lesc, esc_rules, chunk, line)` → array of lines, computed at render time |
 
 ```lua
 T.render("info.tmpl.json", "info.json", {
@@ -133,7 +133,9 @@ By default an unknown marker is an error. `opt.undefined_policy` changes that:
 
 - `action` — `"error"` (default), `"warn"` (print + continue), or `"quiet"`.
 - `value` — what to substitute when not erroring: `"empty"` (drop the marker, keep
-  surrounding text), `"keep"` (leave the original line), or a callable returning lines.
+  surrounding text), `"keep"` (leave the original line), or a callable. The callable has the
+  same signature as an [`as_callback`](#sources) source —
+  `fn(start, marker, lesc, esc_rules, chunk, line)` → array of lines.
 
 ```lua
 T.render_string("x=--[[ @@MISSING@@ ]]y\n", {},

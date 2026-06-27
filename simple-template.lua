@@ -255,16 +255,20 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
     for line in line_iter do
         local pattern = "((.-)%-%-%[%[( *)(%a*)@@([^%s@]+)@@(%a*)( *)%]%])"
         local w = line:gsub(pattern, function(chunk, start, lspaces, lesc, marker, resc, rspaces)
-            local replacement = loaded_vars[marker]
-            local esc_rules = escape_rules[lesc]
-            if lspaces and lspaces:len() > 1 or rspaces and rspaces:len() > 1 then
+            if lspaces:len() > 1 or rspaces:len() > 1 then
                 error("At most 1 separating space allowed, to disable pattern delete a @", errlevel2)
             elseif lesc ~= resc then
                 error("Escape marker differs '" .. lesc .. "' ~= '" .. resc .. "'", errlevel2)
-            elseif lesc ~= "" and not esc_rules then
-                error("Unknown escape rule " .. lesc, errlevel2)
             end
-            if not replacement then
+
+            -- Restate used variables
+            local start, esc, marker, chunk = start, lesc, marker, chunk
+            local replacement = loaded_vars[marker]
+            local esc_rules = escape_rules[esc]
+
+            if esc ~= "" and not esc_rules then
+                error("Unknown escape rule " .. esc, errlevel2)
+            elseif not replacement then
                 if undefined_policy.action == "error" then
                     error("Unknown template var: " .. marker, errlevel2)
                 elseif undefined_policy.action == "warn" then
@@ -278,14 +282,14 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                     return chunk
                 else
                     -- callback
-                    replacement = undefined_policy.value(start, marker, lesc, esc_rules, chunk, line)
+                    replacement = undefined_policy.value(start, marker, esc, esc_rules, chunk, line)
                     if type(replacement) ~= "table" then
                         error("Novar callback should return a table", errlevel2)
                     end
                 end
             end
             if replacement[1] == AS_CALLBACK then
-                replacement = replacement[2](start, marker, lesc, esc_rules, chunk, line)
+                replacement = replacement[2](start, marker, esc, esc_rules, chunk, line)
                 -- Not type checking contents here
                 if type(replacement) ~= "table" then
                     error("Var callback should return a table", errlevel2)
@@ -295,7 +299,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             if #replacement == 1 or start:find("%S") ~= nil then
                 if #replacement > 1 then
                     error("Got " .. #replacement .. " lines in an inline expansion", errlevel2) 
-                elseif lesc ~= "" then
+                elseif esc ~= "" then
                     return start .. apply_escaping(replacement[1], esc_rules)
                 else
                     return start .. replacement[1]
@@ -305,7 +309,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                 if not allow_multiblock_trailing and line:len() > chunk:len() then
                     error("Trailing text after block: '" .. line:sub(chunk:len() + 1) .. "'", errlevel2)
                 end
-                if lesc ~= "" then
+                if esc ~= "" then
                     for _, rep in ipairs(replacement) do
                         parts[#parts + 1] = start .. apply_escaping(rep, esc_rules)
                     end

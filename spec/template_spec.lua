@@ -89,6 +89,80 @@ describe("simple-template", function()
     end)
   end)
 
+  -- The callback contract: render-time callables (as_callback and the
+  -- undefined_policy.value form) receive a fixed argument list, may build a
+  -- block in block position but only one line inline, and their output is
+  -- escaped like any other value. Tagged #callback for isolation.
+  describe("callback contract #callback", function()
+    -- Signature: (start, marker, lesc, esc_rules, chunk, line).
+    it("passes the documented argument list", function()
+      local got
+      local cb = T.as_callback(function(...) got = { n = select("#", ...), ... }; return { "X" } end)
+      rs("  pre --[[ j@@C@@j ]] post\n", { C = cb },
+        { escape = { j = { method = "prefix", prefix = "\\", characters = "!" } } })
+      assert.are.equal(6, got.n)
+      assert.are.equal("  pre ", got[1])                       -- start: text before the marker
+      assert.are.equal("C", got[2])                            -- marker name
+      assert.are.equal("j", got[3])                            -- escape name (lesc)
+      assert.are.equal("table", type(got[4]))                  -- compiled escape rules
+      assert.are.equal("  pre --[[ j@@C@@j ]]", got[5])        -- chunk: start .. marker
+      assert.are.equal("  pre --[[ j@@C@@j ]] post", got[6])   -- whole line
+    end)
+
+    it("passes the same argument list to an undefined_policy callback", function()
+      local got
+      rs("a=--[[ @@MISSING@@ ]]z\n", {}, {
+        undefined_policy = { action = "quiet", value = function(...)
+          got = { n = select("#", ...), ... }; return { "?" }
+        end },
+      })
+      assert.are.equal(6, got.n)
+      assert.are.equal("a=", got[1])
+      assert.are.equal("MISSING", got[2])
+      assert.are.equal("", got[3])
+    end)
+
+    it("expands a block-position callback into many lines", function()
+      local cb = T.as_callback(function()
+        local out = {}
+        for i = 1, 3 do out[#out + 1] = "row " .. i end
+        return out
+      end)
+      assert.are.equal("  row 1\n  row 2\n  row 3\n", rs("  --[[ @@R@@ ]]\n", { R = cb }))
+    end)
+
+    it("rejects a multi-line return in inline position", function()
+      local cb = T.as_callback(function() return { "a", "b" } end)
+      assert.is_true(contains(
+        errmsg(function() rs("x=--[[ @@C@@ ]]\n", { C = cb }) end),
+        "lines in an inline expansion"))
+    end)
+
+    it("invokes the callback once per occurrence, left-to-right then top-down", function()
+      local n = 0
+      local cb = T.as_callback(function() n = n + 1; return { tostring(n) } end)
+      assert.are.equal("1x2\n3\n",
+        rs("--[[ @@K@@ ]]x--[[ @@K@@ ]]\n--[[ @@K@@ ]]\n", { K = cb }))
+    end)
+
+    it("escapes callback output inline", function()
+      local cb = T.as_callback(function() return { 'a"b' } end)
+      assert.are.equal('v=a\\"b\n', rs("v=--[[ j@@C@@j ]]\n", { C = cb },
+        { escape = { j = { method = "prefix", prefix = "\\", characters = '"' } } }))
+    end)
+
+    it("escapes every line of callback output in block position", function()
+      local cb = T.as_callback(function() return { 'a"', 'b"' } end)
+      assert.are.equal('a\\"\nb\\"\n', rs("--[[ j@@C@@j ]]\n", { C = cb },
+        { escape = { j = { method = "prefix", prefix = "\\", characters = '"' } } }))
+    end)
+
+    it("accepts a __call table as a callback", function()
+      local ct = setmetatable({}, { __call = function() return { "CT" } end })
+      assert.are.equal("v=CT\n", rs("v=--[[ @@C@@ ]]\n", { C = T.as_callback(ct) }))
+    end)
+  end)
+
   describe("rendering", function()
     it("preserves text after an inline marker", function()
       assert.are.equal('"v":"x",end\n', rs('"v":"--[[ @@V@@ ]]",end\n', { V = "x" }))
