@@ -326,7 +326,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
     for l in line_iter do
         line = l
         -- Eliminate n^2 scan
-        local at = line:find("--[[", pos, true)
+        local at = line:find("--[[", 1, true)
         if not at then
             sink:write(line, "\n")
         else
