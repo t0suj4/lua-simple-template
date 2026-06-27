@@ -284,39 +284,37 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                     end
                 end
             end
-            if replacement then
-                if replacement[1] == AS_CALLBACK then
-                    replacement = replacement[2](start, marker, lesc, esc_rules, chunk, line)
-                    -- Not type checking contents here
-                    if type(replacement) ~= "table" then
-                        error("Var callback should return a table", errlevel2)
-                    end
+            if replacement[1] == AS_CALLBACK then
+                replacement = replacement[2](start, marker, lesc, esc_rules, chunk, line)
+                -- Not type checking contents here
+                if type(replacement) ~= "table" then
+                    error("Var callback should return a table", errlevel2)
                 end
+            end
 
-                if #replacement == 1 or start:find("%S") ~= nil then
-                    if #replacement > 1 then
-                        error("Got " .. #replacement .. " lines in an inline expansion", errlevel2) 
-                    elseif lesc ~= "" then
-                        return start .. apply_escaping(replacement[1], esc_rules)
-                    else
-                        return start .. replacement[1]
+            if #replacement == 1 or start:find("%S") ~= nil then
+                if #replacement > 1 then
+                    error("Got " .. #replacement .. " lines in an inline expansion", errlevel2) 
+                elseif lesc ~= "" then
+                    return start .. apply_escaping(replacement[1], esc_rules)
+                else
+                    return start .. replacement[1]
+                end
+            else
+                local parts = {}
+                if not allow_multiblock_trailing and line:len() > chunk:len() then
+                    error("Trailing text after block: '" .. line:sub(chunk:len() + 1) .. "'", errlevel2)
+                end
+                if lesc ~= "" then
+                    for _, rep in ipairs(replacement) do
+                        parts[#parts + 1] = start .. apply_escaping(rep, esc_rules)
                     end
                 else
-                    local parts = {}
-                    if not allow_multiblock_trailing and line:len() > chunk:len() then
-                        error("Trailing text after block: '" .. line:sub(chunk:len() + 1) .. "'", errlevel2)
+                    for _, rep in ipairs(replacement) do
+                        parts[#parts + 1] = start .. rep
                     end
-                    if lesc ~= "" then
-                        for _, rep in ipairs(replacement) do
-                            parts[#parts + 1] = start .. apply_escaping(rep, esc_rules)
-                        end
-                    else
-                        for _, rep in ipairs(replacement) do
-                            parts[#parts + 1] = start .. rep
-                        end
-                    end
-                    return table.concat(parts, "\n")
                 end
+                return table.concat(parts, "\n")
             end
         end)
         sink:write(w, "\n")
