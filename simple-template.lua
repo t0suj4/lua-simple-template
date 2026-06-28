@@ -337,8 +337,8 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         end
     end
 
-    local function create_scanner(line, pattern)
-        return function(at, pos)
+    local function create_scanner(line, begin)
+        local function scan(at, pos, pattern)
             local lsp, lesc, marker, resc, rsp, endpos = line:match(pattern, at)
             if not lsp then
                 return line:find("--[[", at + 4, true), pos
@@ -356,18 +356,18 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             at = line:find("--[[", endpos, true)
             return at, endpos, lesc, marker, ctx
         end
+        return scan, begin, 1
     end
     for line in line_iter do
-        local scan = create_scanner(line, ANCHORED)
         -- Eliminate n^2 scan
-        local at = line:find("--[[", 1, true)
-        if not at then
+        local begin = line:find("--[[", 1, true)
+        if not begin then
             sink:write(line, "\n")
         else
-            local pos = 1
+            local scan, at, pos = create_scanner(line, begin)
             while at do
                 local esc, marker, ctx
-                at, pos, esc, marker, ctx = scan(at, pos)
+                at, pos, esc, marker, ctx = scan(at, pos, ANCHORED)
                 if esc then
                     local whitespace = ctx.start:find("%S") ~= nil
                     local esc_rules = resolve_escape(escape_rules, esc)
