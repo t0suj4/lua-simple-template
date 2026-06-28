@@ -260,16 +260,19 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
 
     local errlevel2 = errlevel + 2
 
+    local function resolve_escape(escape_rules, esc)
+        if esc == "" then
+            return ESCAPE_PASSTHROUGH
+        else
+            return escape_rules[esc] or error("Unknown escape rule " .. esc, errlevel2)
+        end
+    end
+
     local function resolve(loaded_vars, escape_rules, esc, marker, ctx)
         local replacement = loaded_vars[marker]
-        local esc_rules = escape_rules[esc]
+        local esc_rules = resolve_escape(escape_rules, esc)
 
-        if esc == "" then
-            esc_rules = ESCAPE_PASSTHROUGH
-        end
-        if not esc_rules then
-            error("Unknown escape rule " .. esc, errlevel2)
-        elseif not replacement then
+        if not replacement then
             if undefined_policy.action == "error" then
                 error("Unknown template var: " .. marker, errlevel2)
             elseif undefined_policy.action == "warn" then
