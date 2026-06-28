@@ -337,6 +337,22 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         end
     end
 
+    local function resolve_values(loaded_vars, escape_rules, esc, marker, start, ctx)
+        local whitespace = start:find("%S") ~= nil
+        local esc_rules = resolve_escape(escape_rules, esc)
+        local replacement = resolve_vars(loaded_vars, marker)
+        if replacement[1] == AS_CALLBACK then
+            replacement = resolve_callbacks(replacement, marker, esc, esc_rules, ctx, 50)
+        end
+        local inline = #replacement == 1 or whitespace
+        if inline and #replacement > 1 then
+            error("Got " .. #replacement .. " lines in an inline expansion", errlevel)
+        end
+        local values = substitute(replacement, esc_rules, inline)
+
+        return values, inline
+    end
+
     local function create_scanner(line, begin)
         local function scan(at, pos, pattern)
             local lsp, lesc, marker, resc, rsp, endpos = line:match(pattern, at)
@@ -387,18 +403,8 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                 local esc, marker, start, ctx
                 at, pos, esc, marker, start, ctx = scan(at, pos, ANCHORED)
                 if esc then
-                    local whitespace = start:find("%S") ~= nil
-                    local esc_rules = resolve_escape(escape_rules, esc)
-                    local replacement = resolve_vars(loaded_vars, marker)
-                    if replacement[1] == AS_CALLBACK then
-                        replacement = resolve_callbacks(replacement, marker, esc, esc_rules, ctx, 50)
-                    end
-                    inline = inline and (#replacement == 1 or whitespace)
-                    if inline and #replacement > 1 then
-                        error("Got " .. #replacement .. " lines in an inline expansion", errlevel)
-                    end
-                    local values = substitute(replacement, esc_rules, inline)
-
+                    local values, inlined = resolve_values(loaded_vars, escape_rules, esc, marker, start, ctx)
+                    inline = inline and inlined
                     emit(sink, start, values)
                 end
             end
