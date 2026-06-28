@@ -360,6 +360,9 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
     local function create_scanner(line)
         local function next_match(pattern)
             local function scan(pattern, at)
+                if at >= line:len() then
+                    return nil
+                end
                 local lsp, lesc, marker, resc, rsp, endpos = line:match(pattern, at)
                 if not lsp then
                     at = line:find("--[[", at + 4, true)
@@ -382,7 +385,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                 at = line:find("--[[", endpos, true)
                 pos = endpos
                 local m = {lesc, marker, start, ctx}
-                return at, m
+                return at or line:len(), m
             end
             return scan, pattern, begin
         end
@@ -411,16 +414,11 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             sink:write(line, "\n")
         else
             local next_match, tail = create_scanner(line)
-            local scan, pattern, at = next_match(TEMPLATE_PATTERN)
             local line_is_block = false
-            while at do
-                local m
-                at, m = scan(pattern, at)
-                if m then
-                    local values, block = resolve_values(m)
-                    line_is_block = line_is_block or block
-                    emit(m[3], values)
-                end
+            for _, m in next_match(TEMPLATE_PATTERN) do
+                local values, block = resolve_values(m)
+                line_is_block = line_is_block or block
+                emit(m[3], values)
             end
             local rest = tail()
             if rest ~= "" and line_is_block and not allow_multiblock_trailing then
