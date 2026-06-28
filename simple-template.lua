@@ -330,8 +330,22 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
     end
 
     local function create_scanner(line, pattern)
-        return function(pos)
-            return line:match(pattern, pos)
+        return function(at, pos)
+            local lsp, lesc, marker, resc, rsp, endpos = line:match(pattern, at)
+            if not lsp then
+                return nil
+            end
+            if lsp:len() > 1 or rsp:len() > 1 then
+                error("At most 1 separating space allowed, to disable pattern delete a @", errlevel)
+            elseif lesc ~= resc then
+                error("Escape marker differs '" .. lesc .. "' ~= '" .. resc .. "'", errlevel)
+            end
+
+            local chunk = line:sub(pos, endpos - 1)
+            local start = line:sub(pos, at - 1)
+            local snippet = line:sub(at, endpos - 1)
+            local ctx = {chunk=chunk, start=start, snippet=snippet, line=line}
+            return lesc, marker, ctx, endpos
         end
     end
     for line in line_iter do
@@ -343,22 +357,13 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         else
             local pos = 1
             while at do
-                local lspaces, lesc, marker, resc, rspaces, endpos = scan(at)
-                if lspaces then
-                    if lspaces:len() > 1 or rspaces:len() > 1 then
-                        error("At most 1 separating space allowed, to disable pattern delete a @", errlevel)
-                    elseif lesc ~= resc then
-                        error("Escape marker differs '" .. lesc .. "' ~= '" .. resc .. "'", errlevel)
-                    end
-                    local chunk = line:sub(pos, endpos - 1)
-                    local start = line:sub(pos, at - 1)
-                    local snippet = line:sub(at, endpos - 1)
-                    local whitespace = start:find("%S") ~= nil
-                    local ctx = {chunk=chunk, start=start, snippet=snippet, line=line}
+                local lesc, marker, ctx, endpos = scan(at, pos)
+                if lesc then
+                    local whitespace = ctx.start:find("%S") ~= nil
                     local value = process_line(lesc, marker, whitespace, ctx)
                     local l = #value
                     for i = 1, l do
-                        sink:write(start)
+                        sink:write(ctx.start)
                         sink:write(value[i])
                         if i < l then
                             sink:write("\n")
