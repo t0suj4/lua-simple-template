@@ -370,15 +370,15 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
     local pos, begin, line
     local ctx_raw = {false, false, false, false}
     local function next_match(pattern)
-        local function scan(pattern, at)
+        local function scan(pat, at)
             if at >= line:len() then
                 return nil
             end
-            local lsp, lesc, marker, resc, rsp, endpos = line:match(pattern, at)
+            local lsp, lesc, marker, resc, rsp, endpos = line:match(pat, at)
             if not lsp then
                 at = line:find("--[[", at + 4, true)
                 if at then
-                    return scan(pattern, at)
+                    return scan(pat, at)
                 else
                     return nil
                 end
