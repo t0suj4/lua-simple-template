@@ -325,18 +325,11 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         return replacement, esc_rules, nil
     end
 
-    local function substitute(replacement, esc_rules, whitespace, ctx)
-        local l = #replacement
-        if l == 1 or whitespace then
-            if l > 1 then
-                error("Got " .. #replacement .. " lines in an inline expansion", errlevel2)
-            end
+    local function substitute(replacement, esc_rules, inline)
+        if inline then
             return {apply_escaping(replacement[1], esc_rules)}
         else
             local parts = {}
-            if not allow_multiblock_trailing and ctx.line:len() > ctx.chunk:len() then
-                error("Trailing text after block: '" .. ctx.line:sub(ctx.chunk:len() + 1) .. "'", errlevel2)
-            end
             for _, rep in ipairs(replacement) do
                 parts[#parts + 1] = apply_escaping(rep, esc_rules)
             end
@@ -380,7 +373,13 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                     if replacement[1] == AS_CALLBACK then
                         replacement = resolve_callbacks(replacement, marker, esc, esc_rules, ctx, 50)
                     end
-                    local value = substitute(replacement, esc_rules, whitespace, ctx)
+                    local inline = #replacement == 1 or whitespace
+                    if inline and #replacement > 1 then
+                        error("Got " .. #replacement .. " lines in an inline expansion", errlevel)
+                    elseif not inline and not allow_multiblock_trailing and ctx.line:len() > ctx.chunk:len() then
+                        error("Trailing text after block: '" .. ctx.line:sub(ctx.chunk:len() + 1) .. "'", errlevel)
+                    end
+                    local value = substitute(replacement, esc_rules, inline, ctx)
 
                     local l = #value
                     for i = 1, l do
