@@ -341,7 +341,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         if not at then
             sink:write(line, "\n")
         else
-            local out, pos = {}, 1
+            local pos = 1
             while at do
                 local lspaces, lesc, marker, resc, rspaces, endpos = scan(at)
                 if lspaces then
@@ -358,10 +358,10 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                     local value = process_line(lesc, marker, whitespace, ctx)
                     local l = #value
                     for i = 1, l do
-                        out[#out + 1] = start
-                        out[#out + 1] = value[i]
+                        sink:write(start)
+                        sink:write(value[i])
                         if i < l then
-                            out[#out + 1] = "\n"
+                            sink:write("\n")
                         end
                     end
                     pos = endpos
@@ -370,8 +370,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                     at = line:find("--[[", at + 4, true)
                 end
             end
-            out[#out + 1] = line:sub(pos)
-            sink:write(table.concat(out), "\n")
+            sink:write(line:sub(pos), "\n")
         end
     end
 end
