@@ -10,15 +10,29 @@ local T = require "simple-template"
 -- Most cases use the in-memory entry point.
 local function rs(tmpl, sources, opt) return T.render_string(tmpl, sources, opt) end
 
--- Capture the message of an expected error.
-local function errmsg(fn)
-  local ok, e = pcall(fn)
-  assert.is_false(ok, "expected the call to raise an error")
-  return tostring(e)
+-- Assert `fn` raises an error whose message contains `needle` (plain substring;
+-- messages carry a file:line prefix). On failure it reports both the wanted
+-- substring and the actual message, so a near-miss is obvious instead of a bare
+-- `false`.
+local function raises(fn, needle)
+  local ok, msg = pcall(fn)
+  assert.is_false(ok, "expected an error, but the call returned normally")
+  msg = tostring(msg)
+  assert.is_true(msg:find(needle, 1, true) ~= nil, string.format(
+    "error message missing expected substring\n  wanted: %s\n  actual: %s", needle, msg))
 end
--- Plain-substring match (error messages may carry a file:line prefix).
-local function contains(haystack, needle)
-  return haystack:find(needle, 1, true) ~= nil
+
+-- Render under an instruction budget so an accidental infinite loop fails the
+-- test cleanly instead of hanging the whole suite. Runs in a coroutine with a
+-- count hook; if the budget is exhausted the resume returns false and we raise.
+local function rs_bounded(tmpl, sources, opt, budget)
+  local co = coroutine.create(function() return T.render_string(tmpl, sources, opt) end)
+  debug.sethook(co, function() error("instruction budget exceeded (likely infinite loop)") end,
+    "", budget or 2000000)
+  local ok, ret = coroutine.resume(co)
+  debug.sethook(co)
+  assert.is_true(ok, "render did not terminate: " .. tostring(ret))
+  return ret
 end
 
 describe("simple-template", function()
@@ -45,8 +59,8 @@ describe("simple-template", function()
     end)
 
     it("rejects a bare number source", function()
-      assert.is_true(contains(errmsg(function() rs("n=--[[ @@N@@ ]]\n", { N = 42 }) end),
-        "Source must be a string or a table"))
+      raises(function() rs("n=--[[ @@N@@ ]]\n", { N = 42 }) end,
+        "Source must be a string or a table")
     end)
 
     it("expands an array as a re-indented block", function()
@@ -78,13 +92,13 @@ describe("simple-template", function()
       end)
 
       it("rejects a non-table return", function()
-        assert.is_true(contains(errmsg(function()
+        raises(function()
           rs("v=--[[ @@C@@ ]]\n", { C = T.as_callback(function() return "oops" end) })
-        end), "callback should return a table"))
+        end, "callback should return a table")
       end)
 
       it("rejects a non-callable constructor argument", function()
-        assert.is_true(contains(errmsg(function() T.as_callback(42) end), "Expected callable"))
+        raises(function() T.as_callback(42) end, "Expected callable")
       end)
     end)
   end)
@@ -134,9 +148,8 @@ describe("simple-template", function()
 
     it("rejects a multi-line return in inline position", function()
       local cb = T.as_callback(function() return { "a", "b" } end)
-      assert.is_true(contains(
-        errmsg(function() rs("x=--[[ @@C@@ ]]\n", { C = cb }) end),
-        "lines in an inline expansion"))
+      raises(function() rs("x=--[[ @@C@@ ]]\n", { C = cb }) end,
+        "lines in an inline expansion")
     end)
 
     it("invokes the callback once per occurrence, left-to-right then top-down", function()
@@ -184,9 +197,7 @@ describe("simple-template", function()
     -- "inline expansion" / "concatenate a table" fall-through it produces today.
     it("reports a clear error when the callback chain is too deep", function()
       local loopcb; loopcb = T.as_callback(function() return loopcb end)
-      local msg = errmsg(function() rs("v=--[[ @@C@@ ]]\n", { C = loopcb }) end)
-      assert.is_true(contains(msg, "callback chain"),
-        "expected a chain-depth diagnostic, got: " .. msg)
+      raises(function() rs("v=--[[ @@C@@ ]]\n", { C = loopcb }) end, "callback chain")
     end)
   end)
 
@@ -253,8 +264,8 @@ describe("simple-template", function()
 
   describe("undefined-variable policy", function()
     it("errors by default", function()
-      assert.is_true(contains(errmsg(function() rs("--[[ @@NOPE@@ ]]\n", {}) end),
-        "Unknown template var: NOPE"))
+      raises(function() rs("--[[ @@NOPE@@ ]]\n", {}) end,
+        "Unknown template var: NOPE")
     end)
 
     it("quiet + empty drops the marker, keeps surrounding text", function()
@@ -273,44 +284,44 @@ describe("simple-template", function()
     end)
 
     it("rejects an unknown action", function()
-      assert.is_true(contains(errmsg(function()
+      raises(function()
         rs("--[[ @@N@@ ]]\n", {}, { undefined_policy = { action = "bogus" } })
-      end), "undefined_policy.action"))
+      end, "undefined_policy.action")
     end)
 
     it("rejects an unknown value", function()
-      assert.is_true(contains(errmsg(function()
+      raises(function()
         rs("--[[ @@N@@ ]]\n", {}, { undefined_policy = { action = "quiet", value = "bogus" } })
-      end), "value"))
+      end, "value")
     end)
   end)
 
   describe("error paths", function()
     it("flags an escape-marker mismatch", function()
-      assert.is_true(contains(errmsg(function()
+      raises(function()
         rs("--[[ a@@V@@b ]]\n", { V = "x" }, { escape = { a = { method = "double", characters = "x" } } })
-      end), "Escape marker differs"))
+      end, "Escape marker differs")
     end)
 
     it("flags an unknown escape rule", function()
-      assert.is_true(contains(errmsg(function() rs('"--[[ zz@@V@@zz ]]"\n', { V = "x" }) end),
-        "Unknown escape rule zz"))
+      raises(function() rs('"--[[ zz@@V@@zz ]]"\n', { V = "x" }) end,
+        "Unknown escape rule zz")
     end)
 
     it("forbids trailing text after a block marker", function()
-      assert.is_true(contains(errmsg(function() rs("  --[[ @@A@@ ]]x\n", { A = { "a", "b" } }) end),
-        "Trailing text after block"))
+      raises(function() rs("  --[[ @@A@@ ]]x\n", { A = { "a", "b" } }) end,
+        "Trailing text after block")
     end)
 
     it("forbids more than one separating space", function()
-      assert.is_true(contains(errmsg(function() rs("--[[  @@V@@ ]]\n", { V = "x" }) end),
-        "At most 1 separating space"))
+      raises(function() rs("--[[  @@V@@ ]]\n", { V = "x" }) end,
+        "At most 1 separating space")
     end)
 
     it("rejects a non-callable escape callback", function()
-      assert.is_true(contains(errmsg(function()
+      raises(function()
         rs("v=--[[ z@@V@@z ]]\n", { V = "x" }, { escape = { z = { method = "callback", callback = 42 } } })
-      end), "Callback must be callable"))
+      end, "Callback must be callable")
     end)
   end)
 
@@ -377,9 +388,9 @@ describe("simple-template", function()
     end)
 
     it("still errors on an unknown marker among known ones (default policy)", function()
-      assert.is_true(contains(errmsg(function()
+      raises(function()
         rs("--[[ @@A@@ ]] --[[ @@NOPE@@ ]]\n", { A = "a" })
-      end), "Unknown template var: NOPE"))
+      end, "Unknown template var: NOPE")
     end)
 
     it("applies the undefined policy per marker", function()
@@ -400,6 +411,21 @@ describe("simple-template", function()
     it("renders two space-separated markers inline", function()
       assert.are.equal("a   b\n", rs("--[[ @@A@@ ]]   --[[ @@B@@ ]]\n", { A = "a", B = "b" }))
     end)
+
+    -- A line with more than one marker is inline, never a block -- even when
+    -- every marker is whitespace-prefixed. Trailing text after the last marker
+    -- must be preserved, not rejected as "trailing text after block" (that rule
+    -- is for a single lone marker only). Guards against the whitespace-only
+    -- block heuristic over-firing on multi-marker lines.
+    it("keeps trailing text after space-separated markers", function()
+      assert.are.equal("a btrailing\n",
+        rs("--[[ @@A@@ ]] --[[ @@B@@ ]]trailing\n", { A = "a", B = "b" }))
+    end)
+
+    it("keeps trailing text after adjacent markers", function()
+      assert.are.equal("abx\n",
+        rs("--[[ @@A@@ ]]--[[ @@B@@ ]]x\n", { A = "a", B = "b" }))
+    end)
   end)
 
   -- Block classification depends only on a marker being alone on its line, not
@@ -417,9 +443,8 @@ describe("simple-template", function()
   -- Trailing text after a block marker.
   describe("block trailing text #multimarker", function()
     it("errors by default", function()
-      assert.is_true(contains(
-        errmsg(function() rs("  --[[ @@A@@ ]] trailing\n", { A = { "x", "y" } }) end),
-        "Trailing text after block: ' trailing'"))
+      raises(function() rs("  --[[ @@A@@ ]] trailing\n", { A = { "x", "y" } }) end,
+        "Trailing text after block: ' trailing'")
     end)
 
     it("appends trailing text to the last line when allowed", function()
@@ -432,6 +457,26 @@ describe("simple-template", function()
       assert.are.equal("  x\n  y\n",
         rs("  --[[ @@A@@ ]]\n", { A = { "x", "y" } },
           { allow_multiblock_trailing = true }))
+    end)
+  end)
+
+  -- Scanner edge cases around "--[[" that does not form a valid marker. The
+  -- scanner must advance past every false start; a bad rescan stride loops
+  -- forever. Bounded so a regression fails instead of hanging. Tagged #scanner.
+  describe("stray '--[[' sequences #scanner", function()
+    it("leaves a line with two non-marker '--[[' unchanged", function()
+      local tmpl = "x --[[ --[[ y\n"
+      assert.are.equal(tmpl, rs_bounded(tmpl, { V = "1" }))
+    end)
+
+    it("still substitutes a real marker after a stray '--[['", function()
+      assert.are.equal("--[[ oops 5\n",
+        rs_bounded("--[[ oops --[[ @@V@@ ]]\n", { V = "5" }))
+    end)
+
+    it("leaves a lone non-marker '--[[' unchanged", function()
+      local tmpl = 'log("--[[ not a marker")\n'
+      assert.are.equal(tmpl, rs_bounded(tmpl, {}))
     end)
   end)
 end)
