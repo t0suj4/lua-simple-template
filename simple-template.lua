@@ -356,44 +356,40 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         return values, block
     end
 
-    local pos, begin
-    local function create_scanner(line)
-        local function next_match(pattern)
-            local function scan(pattern, at)
-                if at >= line:len() then
+    local pos, begin, line
+    local function next_match(pattern)
+        local function scan(pattern, at)
+            if at >= line:len() then
+                return nil
+            end
+            local lsp, lesc, marker, resc, rsp, endpos = line:match(pattern, at)
+            if not lsp then
+                at = line:find("--[[", at + 4, true)
+                if at then
+                    return scan(pattern, at)
+                else
                     return nil
                 end
-                local lsp, lesc, marker, resc, rsp, endpos = line:match(pattern, at)
-                if not lsp then
-                    at = line:find("--[[", at + 4, true)
-                    if at then
-                        return scan(pattern, at)
-                    else
-                        return nil
-                    end
-                end
-                if lsp:len() > 1 or rsp:len() > 1 then
-                    error("At most 1 separating space allowed, to disable pattern delete a @", errlevel)
-                elseif lesc ~= resc then
-                    error("Escape marker differs '" .. lesc .. "' ~= '" .. resc .. "'", errlevel)
-                end
-
-                local chunk = line:sub(pos, endpos - 1)
-                local start = line:sub(pos, at - 1)
-                local snippet = line:sub(at, endpos - 1)
-                local ctx = {chunk=chunk, start=start, snippet=snippet, line=line}
-                at = line:find("--[[", endpos, true)
-                pos = endpos
-                local m = {lesc, marker, start, ctx}
-                return at or line:len(), m
             end
-            return scan, pattern, begin
+            if lsp:len() > 1 or rsp:len() > 1 then
+                error("At most 1 separating space allowed, to disable pattern delete a @", errlevel)
+            elseif lesc ~= resc then
+                error("Escape marker differs '" .. lesc .. "' ~= '" .. resc .. "'", errlevel)
+            end
+
+            local chunk = line:sub(pos, endpos - 1)
+            local start = line:sub(pos, at - 1)
+            local snippet = line:sub(at, endpos - 1)
+            local ctx = {chunk=chunk, start=start, snippet=snippet, line=line}
+            at = line:find("--[[", endpos, true)
+            pos = endpos
+            local m = {lesc, marker, start, ctx}
+            return at or line:len(), m
         end
-        local function tail()
-            return line:sub(pos)
-        end
-        pos = 1
-        return next_match, tail, begin
+        return scan, pattern, begin
+    end
+    local function tail()
+        return line:sub(pos)
     end
 
     local function emit(start, values)
@@ -407,13 +403,14 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         end
     end
 
-    for line in line_iter do
+    for l in line_iter do
+        line = l
         -- Eliminate n^2 scan
         begin = line:find("--[[", 1, true)
         if not begin then
             sink:write(line, "\n")
         else
-            local next_match, tail = create_scanner(line)
+            pos = 1
             local line_is_block = false
             for _, m in next_match(TEMPLATE_PATTERN) do
                 local values, block = resolve_values(m)
