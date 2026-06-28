@@ -26,6 +26,7 @@ local AS_STRING = {"AS_STRING"}
 local AS_PATH = {"AS_PATH"}
 local AS_CALLBACK = {"AS_CALLBACK"}
 
+---@diagnostic disable-next-line: deprecated
 local unpack = table.unpack or unpack
 
 local function load_file(file)
@@ -318,7 +319,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                 error("Unknown template var: " .. marker, errlevel2)
             elseif undef_policy.action == "warn" then
                 print("Unknown template var: " .. marker)
-            elseif undef_policy.action == "quiet" then
+            -- elseif undef_policy.action == "quiet" then
                 -- quiet
             end
             replacement = undef_policy.value
