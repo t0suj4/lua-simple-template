@@ -377,7 +377,9 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                     local whitespace = ctx.start:find("%S") ~= nil
                     local esc_rules = resolve_escape(escape_rules, esc)
                     local replacement = resolve_vars(loaded_vars, marker)
-                    replacement = resolve_callbacks(replacement, marker, esc, esc_rules, ctx, 50)
+                    if replacement[1] == AS_CALLBACK then
+                        replacement = resolve_callbacks(replacement, marker, esc, esc_rules, ctx, 50)
+                    end
                     local value = substitute(replacement, esc_rules, whitespace, ctx)
 
                     local l = #value
