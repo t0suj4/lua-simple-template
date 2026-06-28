@@ -382,6 +382,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             sink:write(line, "\n")
         else
             local scan, at, pos = create_scanner(line, begin)
+            local inline = true
             while at do
                 local esc, marker, start, ctx
                 at, pos, esc, marker, start, ctx = scan(at, pos, ANCHORED)
@@ -392,18 +393,21 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                     if replacement[1] == AS_CALLBACK then
                         replacement = resolve_callbacks(replacement, marker, esc, esc_rules, ctx, 50)
                     end
-                    local inline = #replacement == 1 or whitespace
+                    inline = inline and (#replacement == 1 or whitespace)
                     if inline and #replacement > 1 then
                         error("Got " .. #replacement .. " lines in an inline expansion", errlevel)
-                    elseif not inline and not allow_multiblock_trailing and ctx.line:len() > ctx.chunk:len() then
-                        error("Trailing text after block: '" .. ctx.line:sub(ctx.chunk:len() + 1) .. "'", errlevel)
                     end
                     local values = substitute(replacement, esc_rules, inline)
 
                     emit(sink, start, values)
                 end
             end
-            sink:write(line:sub(pos), "\n")
+            local rest = line:sub(pos)
+            if rest ~= "" and not inline and not allow_multiblock_trailing then
+                error("Trailing text after block: '" .. rest .. "'", errlevel)
+            else
+                sink:write(rest, "\n")
+            end
         end
     end
 end
