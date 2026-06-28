@@ -363,6 +363,18 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         end
         return scan, begin, 1
     end
+
+    local function emit(sink, start, values)
+        local l = #values
+        for i = 1, l do
+            sink:write(start)
+            sink:write(values[i])
+            if i < l then
+                sink:write("\n")
+            end
+        end
+    end
+
     for line in line_iter do
         -- Eliminate n^2 scan
         local begin = line:find("--[[", 1, true)
@@ -386,16 +398,9 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                     elseif not inline and not allow_multiblock_trailing and ctx.line:len() > ctx.chunk:len() then
                         error("Trailing text after block: '" .. ctx.line:sub(ctx.chunk:len() + 1) .. "'", errlevel)
                     end
-                    local value = substitute(replacement, esc_rules, inline, ctx)
+                    local values = substitute(replacement, esc_rules, inline)
 
-                    local l = #value
-                    for i = 1, l do
-                        sink:write(start)
-                        sink:write(value[i])
-                        if i < l then
-                            sink:write("\n")
-                        end
-                    end
+                    emit(sink, start, values)
                 end
             end
             sink:write(line:sub(pos), "\n")
