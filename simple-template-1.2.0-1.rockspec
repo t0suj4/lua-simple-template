@@ -1,9 +1,9 @@
 rockspec_format = "3.0"
 package = "simple-template"
-version = "1.0-1"
+version = "1.2.0-1"
 source = {
   url = "git+https://github.com/t0suj4/lua-simple-template.git",
-  tag = "v1.0"
+  tag = "v1.2.0"
 }
 description = {
   summary = "A simple lua templating engine with good escaping and no control-flow",
