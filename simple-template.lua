@@ -284,7 +284,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
 
     local errlevel2 = errlevel + 2
 
-    local function resolve_escape(escape_rules, esc)
+    local function resolve_escape(esc)
         if esc == "" then
             return ESCAPE_PASSTHROUGH
         else
@@ -308,7 +308,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         return resolve_callbacks(rep, marker, esc, esc_rules, ctx, limit - 1)
     end
 
-    local function resolve_vars(loaded_vars, marker)
+    local function resolve_vars(marker)
         local replacement = loaded_vars[marker]
 
         if not replacement then
@@ -337,10 +337,10 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         end
     end
 
-    local function resolve_values(loaded_vars, escape_rules, esc, marker, start, ctx)
+    local function resolve_values(esc, marker, start, ctx)
         local whitespace = start:find("%S") ~= nil
-        local esc_rules = resolve_escape(escape_rules, esc)
-        local replacement = resolve_vars(loaded_vars, marker)
+        local esc_rules = resolve_escape(esc)
+        local replacement = resolve_vars(marker)
         if replacement[1] == AS_CALLBACK then
             replacement = resolve_callbacks(replacement, marker, esc, esc_rules, ctx, 50)
         end
@@ -380,7 +380,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         return scan, begin, 1
     end
 
-    local function emit(sink, start, values)
+    local function emit(start, values)
         local l = #values
         for i = 1, l do
             sink:write(start)
@@ -403,9 +403,9 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                 local esc, marker, start, ctx
                 at, pos, esc, marker, start, ctx = scan(at, pos, ANCHORED)
                 if esc then
-                    local values, inlined = resolve_values(loaded_vars, escape_rules, esc, marker, start, ctx)
+                    local values, inlined = resolve_values(esc, marker, start, ctx)
                     inline = inline and inlined
-                    emit(sink, start, values)
+                    emit(start, values)
                 end
             end
             local rest = line:sub(pos)
