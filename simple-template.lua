@@ -129,11 +129,15 @@ function M.as_lines(source)
     return lines
 end
 
-function M.as_callback(callback)
+local function as_callback(callback, source)
     if not is_callable(callback) then
         error("Expected callable type, got " .. type(callback), 2)
     end
-    return {AS_CALLBACK, callback}
+    return {AS_CALLBACK, callback, source}
+end
+
+function M.as_callback(callback)
+    return as_callback(callback, "Var")
 end
 
 local function create_escape_table(rule, errlevel)
@@ -248,14 +252,34 @@ local function validate_undefined_policy(tbl, errlevel)
     end
 end
 
-local UNDEFINED_POLICY_DEFAULTS = {action = "error"}
+local UNDEFINED_POLICY_DEFAULTS = {action = "error", value = "empty"}
 
 local ANCHORED = "^%-%-%[%[( *)(%a*)@@([^%s@]+)@@(%a*)( *)%]%]()"
+
+local function to_undefined_policy_cb(value)
+    local cb
+    if value == "empty" then
+        cb = function()
+            return {""}
+        end
+    elseif value == "keep" then
+        cb = function(_, _, _, _, _ ,_, snippet)
+            return {snippet}
+        end
+    else
+        cb = value
+    end
+    return as_callback(cb, "Undefined policy")
+end
 
 local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
     local escape_rules = opt.escape_rules
     local undefined_policy = opt.undefined_policy or UNDEFINED_POLICY_DEFAULTS
     validate_undefined_policy(undefined_policy, errlevel + 1)
+    local undef_policy = {
+        action = undefined_policy.action,
+        value = to_undefined_policy_cb(undefined_policy.value),
+    }
     local allow_multiblock_trailing = opt.allow_multiblock_trailing or false
 
     local errlevel2 = errlevel + 2
@@ -273,24 +297,14 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         local esc_rules = resolve_escape(escape_rules, esc)
 
         if not replacement then
-            if undefined_policy.action == "error" then
+            if undef_policy.action == "error" then
                 error("Unknown template var: " .. marker, errlevel2)
-            elseif undefined_policy.action == "warn" then
+            elseif undef_policy.action == "warn" then
                 print("Unknown template var: " .. marker)
-            elseif undefined_policy.action == "quiet" then
+            elseif undef_policy.action == "quiet" then
                 -- quiet
             end
-            if undefined_policy.value == "empty" then
-                return nil, nil, {""}
-            elseif undefined_policy.value == "keep" then
-                return nil, nil, {ctx.snippet}
-            else
-                -- callback
-                replacement = undefined_policy.value(ctx.start, marker, esc, esc_rules, ctx.chunk, ctx.line, ctx.snippet)
-                if type(replacement) ~= "table" then
-                    error("Novar callback should return a table", errlevel2)
-                end
-            end
+            replacement = undef_policy.value
         end
         local limit = 50
         while replacement[1] == AS_CALLBACK do
@@ -298,11 +312,12 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                 error("Got callback chain too deep", errlevel2)
             end
             limit = limit - 1
-            replacement = replacement[2](ctx.start, marker, esc, esc_rules, ctx.chunk, ctx.line, ctx.snippet)
+            local rep = replacement[2](ctx.start, marker, esc, esc_rules, ctx.chunk, ctx.line, ctx.snippet)
             -- Not type checking contents here
-            if type(replacement) ~= "table" then
-                error("Var callback should return a table", errlevel2)
+            if type(rep) ~= "table" then
+                error(replacement[3] .. " callback should return a table", errlevel2)
             end
+            replacement = rep
         end
         return replacement, esc_rules, nil
     end
