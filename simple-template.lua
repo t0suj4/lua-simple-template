@@ -359,7 +359,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             local snippet = line:sub(at, endpos - 1)
             local ctx = {chunk=chunk, start=start, snippet=snippet, line=line}
             at = line:find("--[[", endpos, true)
-            return at, endpos, lesc, marker, ctx
+            return at, endpos, lesc, marker, start, ctx
         end
         return scan, begin, 1
     end
@@ -371,10 +371,10 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         else
             local scan, at, pos = create_scanner(line, begin)
             while at do
-                local esc, marker, ctx
-                at, pos, esc, marker, ctx = scan(at, pos, ANCHORED)
+                local esc, marker, start, ctx
+                at, pos, esc, marker, start, ctx = scan(at, pos, ANCHORED)
                 if esc then
-                    local whitespace = ctx.start:find("%S") ~= nil
+                    local whitespace = start:find("%S") ~= nil
                     local esc_rules = resolve_escape(escape_rules, esc)
                     local replacement = resolve_vars(loaded_vars, marker)
                     if replacement[1] == AS_CALLBACK then
@@ -390,7 +390,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
 
                     local l = #value
                     for i = 1, l do
-                        sink:write(ctx.start)
+                        sink:write(start)
                         sink:write(value[i])
                         if i < l then
                             sink:write("\n")
