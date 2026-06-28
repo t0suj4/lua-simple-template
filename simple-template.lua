@@ -356,8 +356,8 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         return values, block
     end
 
-    local pos
-    local function create_scanner(line, begin)
+    local pos, begin
+    local function create_scanner(line)
         local function next_match(pattern)
             local function scan(pattern, at)
                 local lsp, lesc, marker, resc, rsp, endpos = line:match(pattern, at)
@@ -406,7 +406,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
 
     for line in line_iter do
         -- Eliminate n^2 scan
-        local begin = line:find("--[[", 1, true)
+        begin = line:find("--[[", 1, true)
         if not begin then
             sink:write(line, "\n")
         else
