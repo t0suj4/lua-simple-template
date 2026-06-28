@@ -26,6 +26,8 @@ local AS_STRING = {"AS_STRING"}
 local AS_PATH = {"AS_PATH"}
 local AS_CALLBACK = {"AS_CALLBACK"}
 
+local unpack = table.unpack or unpack
+
 local function load_file(file)
     local lines = {}
     for line in file:lines() do
@@ -337,14 +339,14 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         end
     end
 
-    local function resolve_values(esc, marker, start, ctx)
-        local whitespace = start:find("%S") ~= nil
+    local function resolve_values(match)
+        local esc, marker, start, ctx = unpack(match)
         local esc_rules = resolve_escape(esc)
         local replacement = resolve_vars(marker)
         if replacement[1] == AS_CALLBACK then
             replacement = resolve_callbacks(replacement, marker, esc, esc_rules, ctx, 50)
         end
-        local inline = #replacement == 1 or whitespace
+        local inline = #replacement == 1 or start:find("%S") ~= nil
         if inline and #replacement > 1 then
             error("Got " .. #replacement .. " lines in an inline expansion", errlevel)
         end
@@ -361,7 +363,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                 if at then
                     return scan(at, pos, pattern)
                 else
-                    return nil, pos
+                    return nil, nil, pos
                 end
             end
             if lsp:len() > 1 or rsp:len() > 1 then
@@ -375,7 +377,8 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             local snippet = line:sub(at, endpos - 1)
             local ctx = {chunk=chunk, start=start, snippet=snippet, line=line}
             at = line:find("--[[", endpos, true)
-            return at, endpos, lesc, marker, start, ctx
+            local m = {lesc, marker, start, ctx}
+            return m, at, endpos
         end
         return scan, begin, 1
     end
@@ -398,18 +401,18 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             sink:write(line, "\n")
         else
             local scan, at, pos = create_scanner(line, begin)
-            local inline = true
+            local line_is_block = true
             while at do
-                local esc, marker, start, ctx
-                at, pos, esc, marker, start, ctx = scan(at, pos, TEMPLATE_PATTERN)
-                if esc then
-                    local values, inlined = resolve_values(esc, marker, start, ctx)
-                    inline = inline and inlined
-                    emit(start, values)
+                local m
+                m, at, pos = scan(at, pos, TEMPLATE_PATTERN)
+                if m then
+                    local values, inline = resolve_values(m)
+                    line_is_block = line_is_block and inline
+                    emit(m[3], values)
                 end
             end
             local rest = line:sub(pos)
-            if rest ~= "" and not inline and not allow_multiblock_trailing then
+            if rest ~= "" and not line_is_block and not allow_multiblock_trailing then
                 error("Trailing text after block: '" .. rest .. "'", errlevel)
             else
                 sink:write(rest, "\n")
