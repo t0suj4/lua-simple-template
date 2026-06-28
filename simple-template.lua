@@ -356,15 +356,16 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         return values, block
     end
 
+    local pos
     local function create_scanner(line, begin)
-        local function scan(at, pos, pattern)
+        local function scan(at, pattern)
             local lsp, lesc, marker, resc, rsp, endpos = line:match(pattern, at)
             if not lsp then
                 at = line:find("--[[", at + 4, true)
                 if at then
-                    return scan(at, pos, pattern)
+                    return scan(at, pattern)
                 else
-                    return nil, nil, pos
+                    return nil, nil
                 end
             end
             if lsp:len() > 1 or rsp:len() > 1 then
@@ -378,13 +379,15 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             local snippet = line:sub(at, endpos - 1)
             local ctx = {chunk=chunk, start=start, snippet=snippet, line=line}
             at = line:find("--[[", endpos, true)
+            pos = endpos
             local m = {lesc, marker, start, ctx}
-            return m, at, endpos
+            return m, at
         end
-        local function tail(pos)
+        local function tail()
             return line:sub(pos)
         end
-        return scan, tail, begin, 1
+        pos = 1
+        return scan, tail, begin
     end
 
     local function emit(start, values)
@@ -404,18 +407,18 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         if not begin then
             sink:write(line, "\n")
         else
-            local scan, tail, at, pos = create_scanner(line, begin)
+            local scan, tail, at = create_scanner(line, begin)
             local line_is_block = false
             while at do
                 local m
-                m, at, pos = scan(at, pos, TEMPLATE_PATTERN)
+                m, at = scan(at, TEMPLATE_PATTERN)
                 if m then
                     local values, block = resolve_values(m)
                     line_is_block = line_is_block or block
                     emit(m[3], values)
                 end
             end
-            local rest = tail(pos)
+            local rest = tail()
             if rest ~= "" and line_is_block and not allow_multiblock_trailing then
                 error("Trailing text after block: '" .. rest .. "'", errlevel)
             else
