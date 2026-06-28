@@ -381,7 +381,10 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             local m = {lesc, marker, start, ctx}
             return m, at, endpos
         end
-        return scan, begin, 1
+        local function tail(pos)
+            return line:sub(pos)
+        end
+        return scan, tail, begin, 1
     end
 
     local function emit(start, values)
@@ -401,7 +404,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         if not begin then
             sink:write(line, "\n")
         else
-            local scan, at, pos = create_scanner(line, begin)
+            local scan, tail, at, pos = create_scanner(line, begin)
             local line_is_block = false
             while at do
                 local m
@@ -412,7 +415,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                     emit(m[3], values)
                 end
             end
-            local rest = line:sub(pos)
+            local rest = tail(pos)
             if rest ~= "" and line_is_block and not allow_multiblock_trailing then
                 error("Trailing text after block: '" .. rest .. "'", errlevel)
             else
