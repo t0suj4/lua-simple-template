@@ -327,15 +327,15 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         return replacement
     end
 
-    local function substitute(replacement, esc_rules, inline)
-        if inline then
-            return {apply_escaping(replacement[1], esc_rules)}
-        else
+    local function substitute(replacement, esc_rules, block)
+        if block then
             local parts = {}
             for _, rep in ipairs(replacement) do
                 parts[#parts + 1] = apply_escaping(rep, esc_rules)
             end
             return parts
+        else
+            return {apply_escaping(replacement[1], esc_rules)}
         end
     end
 
@@ -346,13 +346,13 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         if replacement[1] == AS_CALLBACK then
             replacement = resolve_callbacks(replacement, marker, esc, esc_rules, ctx, 50)
         end
-        local inline = #replacement == 1 or start:find("%S") ~= nil
-        if inline and #replacement > 1 then
+        local block = #replacement ~= 1 and start:find("%S") == nil
+        if not block and #replacement > 1 then
             error("Got " .. #replacement .. " lines in an inline expansion", errlevel)
         end
-        local values = substitute(replacement, esc_rules, inline)
+        local values = substitute(replacement, esc_rules, block)
 
-        return values, inline
+        return values, block
     end
 
     local function create_scanner(line, begin)
@@ -401,18 +401,18 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             sink:write(line, "\n")
         else
             local scan, at, pos = create_scanner(line, begin)
-            local line_is_block = true
+            local line_is_block = false
             while at do
                 local m
                 m, at, pos = scan(at, pos, TEMPLATE_PATTERN)
                 if m then
-                    local values, inline = resolve_values(m)
-                    line_is_block = line_is_block and inline
+                    local values, block = resolve_values(m)
+                    line_is_block = line_is_block or block
                     emit(m[3], values)
                 end
             end
             local rest = line:sub(pos)
-            if rest ~= "" and not line_is_block and not allow_multiblock_trailing then
+            if rest ~= "" and line_is_block and not allow_multiblock_trailing then
                 error("Trailing text after block: '" .. rest .. "'", errlevel)
             else
                 sink:write(rest, "\n")
