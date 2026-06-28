@@ -358,12 +358,12 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
 
     local pos
     local function create_scanner(line, begin)
-        local function scan(at, pattern)
+        local function scan(pattern, at)
             local lsp, lesc, marker, resc, rsp, endpos = line:match(pattern, at)
             if not lsp then
                 at = line:find("--[[", at + 4, true)
                 if at then
-                    return scan(at, pattern)
+                    return scan(pattern, at)
                 else
                     return nil, nil
                 end
@@ -381,7 +381,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             at = line:find("--[[", endpos, true)
             pos = endpos
             local m = {lesc, marker, start, ctx}
-            return m, at
+            return at, m
         end
         local function tail()
             return line:sub(pos)
@@ -411,7 +411,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             local line_is_block = false
             while at do
                 local m
-                m, at = scan(at, TEMPLATE_PATTERN)
+                at, m = scan(TEMPLATE_PATTERN, at)
                 if m then
                     local values, block = resolve_values(m)
                     line_is_block = line_is_block or block
