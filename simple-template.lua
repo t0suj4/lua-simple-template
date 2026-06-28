@@ -341,7 +341,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         return function(at, pos)
             local lsp, lesc, marker, resc, rsp, endpos = line:match(pattern, at)
             if not lsp then
-                return nil
+                return line:find("--[[", at + 4, true), pos
             end
             if lsp:len() > 1 or rsp:len() > 1 then
                 error("At most 1 separating space allowed, to disable pattern delete a @", errlevel)
@@ -353,7 +353,8 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             local start = line:sub(pos, at - 1)
             local snippet = line:sub(at, endpos - 1)
             local ctx = {chunk=chunk, start=start, snippet=snippet, line=line}
-            return lesc, marker, ctx, endpos
+            at = line:find("--[[", endpos, true)
+            return at, endpos, lesc, marker, ctx
         end
     end
     for line in line_iter do
@@ -365,7 +366,8 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         else
             local pos = 1
             while at do
-                local esc, marker, ctx, endpos = scan(at, pos)
+                local esc, marker, ctx
+                at, pos, esc, marker, ctx = scan(at, pos)
                 if esc then
                     local whitespace = ctx.start:find("%S") ~= nil
                     local esc_rules = resolve_escape(escape_rules, esc)
@@ -389,10 +391,6 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                             sink:write("\n")
                         end
                     end
-                    pos = endpos
-                    at = line:find("--[[", pos, true)
-                else
-                    at = line:find("--[[", at + 4, true)
                 end
             end
             sink:write(line:sub(pos), "\n")
