@@ -322,7 +322,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             replacement = undef_policy.value
         end
 
-        return replacement, esc_rules, nil
+        return replacement
     end
 
     local function substitute(replacement, esc_rules, inline)
