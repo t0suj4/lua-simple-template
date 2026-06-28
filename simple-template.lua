@@ -275,6 +275,16 @@ local function to_undefined_policy_cb(value)
     return as_callback(cb, "Undefined policy")
 end
 
+local function make_ctx(ctx_raw)
+    local line = ctx_raw[1]
+    return {
+        line = line,
+        start = line:sub(ctx_raw[2], ctx_raw[3] - 1),
+        chunk = line:sub(ctx_raw[2], ctx_raw[4] - 1),
+        snippet = line:sub(ctx_raw[3], ctx_raw[4] - 1),
+    }
+end
+
 local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
     local escape_rules = opt.escape_rules
     local undefined_policy = opt.undefined_policy or UNDEFINED_POLICY_DEFAULTS
@@ -341,10 +351,11 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
     end
 
     local function resolve_values(match)
-        local esc, marker, start, ctx = unpack(match)
+        local esc, marker, start, ctx_raw = unpack(match)
         local esc_rules = resolve_escape(esc)
         local replacement = resolve_vars(marker)
         if replacement[1] == AS_CALLBACK then
+            local ctx = make_ctx(ctx_raw)
             replacement = resolve_callbacks(replacement, marker, esc, esc_rules, ctx, 50)
         end
         local block = #replacement ~= 1 and start:find("%S") == nil
@@ -357,6 +368,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
     end
 
     local pos, begin, line
+    local ctx_raw = {false, false, false, false}
     local function next_match(pattern)
         local function scan(pattern, at)
             if at >= line:len() then
@@ -376,14 +388,13 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             elseif lesc ~= resc then
                 error("Escape marker differs '" .. lesc .. "' ~= '" .. resc .. "'", errlevel)
             end
-
-            local chunk = line:sub(pos, endpos - 1)
+            ctx_raw[2] = pos
+            ctx_raw[3] = at
+            ctx_raw[4] = endpos
             local start = line:sub(pos, at - 1)
-            local snippet = line:sub(at, endpos - 1)
-            local ctx = {chunk=chunk, start=start, snippet=snippet, line=line}
             at = line:find("--[[", endpos, true)
             pos = endpos
-            return at or line:len(), {lesc, marker, start, ctx}
+            return at or line:len(), {lesc, marker, start, ctx_raw}
         end
         return scan, pattern, begin
     end
@@ -404,6 +415,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
 
     for l in line_iter do
         line = l
+        ctx_raw[1] = line
         -- Eliminate n^2 scan
         begin = line:find("--[[", 1, true)
         if not begin then
