@@ -1,6 +1,6 @@
 -- Simple templating engine
 --
--- Copyright 2025 t0suj4
+-- Copyright 2025-2026 t0suj4
 --
 -- Permission is hereby granted, free of charge, to any person obtaining a copy
 -- of this software and associated documentation files (the “Software”), to
