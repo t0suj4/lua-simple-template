@@ -109,18 +109,24 @@ A callback — whether from `as_callback` or used as an `undefined_policy.value`
 [Undefined variables](#undefined-variables)) — is invoked once per marker occurrence with:
 
 ```
-fn(start, marker, esc, esc_rules, chunk, line, snippet)
+fn(marker, esc, esc_rules, ctx)
 ```
 
 | # | arg | value |
 | --- | --- | --- |
-| 1 | `start` | text on the line before the marker |
-| 2 | `marker` | the marker name |
-| 3 | `esc` | the escape name flanking the marker (`""` if none) |
-| 4 | `esc_rules` | the compiled escape rules for `esc` (or `nil`) |
-| 5 | `chunk` | `start .. snippet` — everything matched up to and including `]]` |
-| 6 | `line` | the whole line |
-| 7 | `snippet` | just the marker text, `--[[ … ]]` |
+| 1 | `marker` | the marker name |
+| 2 | `esc` | the escape name flanking the marker (`""` if none) |
+| 3 | `esc_rules` | the compiled escape rules for `esc` (or `nil`) |
+| 4 | `ctx` | a table of positional context (see below) |
+
+`ctx` carries everything about where the marker sits:
+
+| field | value |
+| --- | --- |
+| `ctx.line` | the whole line |
+| `ctx.start` | text on the line before the marker |
+| `ctx.chunk` | `start .. snippet` — everything matched up to and including `]]` |
+| `ctx.snippet` | just the marker text, `--[[ … ]]` |
 
 It must return an **array of lines** (one element for inline use; several to block-expand).
 

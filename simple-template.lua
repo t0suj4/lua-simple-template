@@ -266,8 +266,8 @@ local function to_undefined_policy_cb(value)
             return {""}
         end
     elseif value == "keep" then
-        cb = function(_, _, _, _, _ ,_, snippet)
-            return {snippet}
+        cb = function(_, _ ,_, ctx)
+            return {ctx.snippet}
         end
     else
         cb = value
@@ -313,7 +313,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             return replacement
         end
         limit = limit - 1
-        local rep = replacement[2](ctx.start, marker, esc, esc_rules, ctx.chunk, ctx.line, ctx.snippet)
+        local rep = replacement[2](marker, esc, esc_rules, ctx)
         -- Not type checking contents here
         if type(rep) ~= "table" then
             error(replacement[3] .. " callback should return a table", errlevel2)

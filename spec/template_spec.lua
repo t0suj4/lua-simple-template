@@ -83,7 +83,7 @@ describe("simple-template", function()
     describe("as_callback (per-variable)", function()
       it("produces a replacement dynamically", function()
         assert.are.equal("v=DYN:C\n",
-          rs("v=--[[ @@C@@ ]]\n", { C = T.as_callback(function(_, marker) return { "DYN:" .. marker } end) }))
+          rs("v=--[[ @@C@@ ]]\n", { C = T.as_callback(function(marker) return { "DYN:" .. marker } end) }))
       end)
 
       it("can return a multi-line block", function()
@@ -108,20 +108,22 @@ describe("simple-template", function()
   -- block in block position but only one line inline, and their output is
   -- escaped like any other value. Tagged #callback for isolation.
   describe("callback contract #callback", function()
-    -- Signature: (start, marker, lesc, esc_rules, chunk, line).
+    -- Signature: (marker, esc, esc_rules, ctx), where
+    -- ctx = { line, start, chunk, snippet }.
     it("passes the documented argument list", function()
       local got
       local cb = T.as_callback(function(...) got = { n = select("#", ...), ... }; return { "X" } end)
       rs("  pre --[[ j@@C@@j ]] post\n", { C = cb },
         { escape = { j = { method = "prefix", prefix = "\\", characters = "!" } } })
-      assert.are.equal(7, got.n)
-      assert.are.equal("  pre ", got[1])                       -- start: text before the marker
-      assert.are.equal("C", got[2])                            -- marker name
-      assert.are.equal("j", got[3])                            -- escape name (lesc)
-      assert.are.equal("table", type(got[4]))                  -- compiled escape rules
-      assert.are.equal("  pre --[[ j@@C@@j ]]", got[5])        -- chunk: start .. marker
-      assert.are.equal("  pre --[[ j@@C@@j ]] post", got[6])   -- whole line
-      assert.are.equal("--[[ j@@C@@j ]]", got[7])              -- snippet
+      assert.are.equal(4, got.n)
+      assert.are.equal("C", got[1])                            -- marker name
+      assert.are.equal("j", got[2])                            -- escape name
+      assert.are.equal("table", type(got[3]))                  -- compiled escape rules
+      local ctx = got[4]                                       -- context table
+      assert.are.equal("  pre --[[ j@@C@@j ]] post", ctx.line)    -- whole line
+      assert.are.equal("  pre ", ctx.start)                       -- text before the marker
+      assert.are.equal("  pre --[[ j@@C@@j ]]", ctx.chunk)        -- start .. snippet
+      assert.are.equal("--[[ j@@C@@j ]]", ctx.snippet)            -- just the marker
     end)
 
     it("passes the same argument list to an undefined_policy callback", function()
@@ -131,10 +133,10 @@ describe("simple-template", function()
           got = { n = select("#", ...), ... }; return { "?" }
         end },
       })
-      assert.are.equal(7, got.n)
-      assert.are.equal("a=", got[1])
-      assert.are.equal("MISSING", got[2])
-      assert.are.equal("", got[3])
+      assert.are.equal(4, got.n)
+      assert.are.equal("MISSING", got[1])                      -- marker name
+      assert.are.equal("", got[2])                             -- esc
+      assert.are.equal("a=", got[4].start)                     -- ctx.start
     end)
 
     it("expands a block-position callback into many lines", function()
@@ -280,7 +282,7 @@ describe("simple-template", function()
 
     it("callback value supplies a fallback", function()
       assert.are.equal("v=fb:N\n", rs("v=--[[ @@N@@ ]]\n", {},
-        { undefined_policy = { action = "quiet", value = function(_, m) return { "fb:" .. m } end } }))
+        { undefined_policy = { action = "quiet", value = function(m) return { "fb:" .. m } end } }))
     end)
 
     it("rejects an unknown action", function()
