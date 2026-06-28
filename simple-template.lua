@@ -304,13 +304,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         return replacement, esc_rules, nil
     end
 
-    local function process_line(esc, marker, whitespace, ctx)
-
-        local replacement, esc_rules, retval = resolve(loaded_vars, escape_rules, esc, marker, ctx)
-        if retval then
-            return retval
-        end
-
+    local function substitute(replacement, esc_rules, whitespace, ctx)
         local l = #replacement
         if l == 1 or whitespace then
             if l > 1 then
@@ -357,10 +351,17 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         else
             local pos = 1
             while at do
-                local lesc, marker, ctx, endpos = scan(at, pos)
-                if lesc then
+                local esc, marker, ctx, endpos = scan(at, pos)
+                if esc then
                     local whitespace = ctx.start:find("%S") ~= nil
-                    local value = process_line(lesc, marker, whitespace, ctx)
+                    local replacement, esc_rules, retval = resolve(loaded_vars, escape_rules, esc, marker, ctx)
+                    local value
+                    if retval then
+                        value = retval
+                    else
+                        value = substitute(replacement, esc_rules, whitespace, ctx)
+                    end
+
                     local l = #value
                     for i = 1, l do
                         sink:write(ctx.start)
