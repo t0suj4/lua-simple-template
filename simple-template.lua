@@ -306,10 +306,13 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             end
             replacement = undef_policy.value
         end
-        local limit = 50
-        while replacement[1] == AS_CALLBACK do
+
+        local function resolve_callbacks(replacement, marker, esc, esc_rules, ctx, limit)
             if limit <= 0 then
                 error("Got callback chain too deep", errlevel2)
+            end
+            if replacement[1] ~= AS_CALLBACK then
+                return replacement
             end
             limit = limit - 1
             local rep = replacement[2](ctx.start, marker, esc, esc_rules, ctx.chunk, ctx.line, ctx.snippet)
@@ -317,8 +320,9 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             if type(rep) ~= "table" then
                 error(replacement[3] .. " callback should return a table", errlevel2)
             end
-            replacement = rep
+            return resolve_callbacks(rep, marker, esc, esc_rules, ctx, limit - 1)
         end
+        replacement = resolve_callbacks(replacement, marker, esc, esc_rules, ctx, 50)
         return replacement, esc_rules, nil
     end
 
