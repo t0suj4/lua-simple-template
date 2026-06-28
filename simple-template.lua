@@ -366,7 +366,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                     if at then
                         return scan(pattern, at)
                     else
-                        return nil, nil
+                        return nil
                     end
                 end
                 if lsp:len() > 1 or rsp:len() > 1 then
@@ -410,7 +410,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         if not begin then
             sink:write(line, "\n")
         else
-            local next_match, tail = create_scanner(line, begin)
+            local next_match, tail = create_scanner(line)
             local scan, pattern, at = next_match(TEMPLATE_PATTERN)
             local line_is_block = false
             while at do
