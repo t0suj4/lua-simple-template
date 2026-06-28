@@ -254,7 +254,7 @@ end
 
 local UNDEFINED_POLICY_DEFAULTS = {action = "error", value = "empty"}
 
-local ANCHORED = "^%-%-%[%[( *)(%a*)@@([^%s@]+)@@(%a*)( *)%]%]()"
+local TEMPLATE_PATTERN = "^%-%-%[%[( *)(%a*)@@([^%s@]+)@@(%a*)( *)%]%]()"
 
 local function to_undefined_policy_cb(value)
     local cb
@@ -401,7 +401,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             local inline = true
             while at do
                 local esc, marker, start, ctx
-                at, pos, esc, marker, start, ctx = scan(at, pos, ANCHORED)
+                at, pos, esc, marker, start, ctx = scan(at, pos, TEMPLATE_PATTERN)
                 if esc then
                     local values, inlined = resolve_values(esc, marker, start, ctx)
                     inline = inline and inlined
