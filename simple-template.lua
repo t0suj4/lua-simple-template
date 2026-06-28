@@ -297,9 +297,8 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         return replacement, esc_rules, nil
     end
 
-    local function process_line(chunk, start, esc, marker, snippet, whitespace)
+    local function process_line(esc, marker, whitespace, ctx)
 
-        local ctx = {chunk=chunk, start=start, snippet=snippet}
         local replacement, esc_rules, retval = resolve(loaded_vars, escape_rules, esc, marker, ctx)
         if retval then
             return retval
@@ -316,8 +315,8 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             end
         else
             local parts = {}
-            if not allow_multiblock_trailing and line:len() > chunk:len() then
-                error("Trailing text after block: '" .. line:sub(chunk:len() + 1) .. "'", errlevel2)
+            if not allow_multiblock_trailing and ctx.line:len() > ctx.chunk:len() then
+                error("Trailing text after block: '" .. ctx.line:sub(ctx.chunk:len() + 1) .. "'", errlevel2)
             end
             if esc ~= "" then
                 for _, rep in ipairs(replacement) do
@@ -358,7 +357,8 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                     local start = line:sub(pos, at - 1)
                     local snippet = line:sub(at, endpos - 1)
                     local whitespace = start:find("%S") ~= nil
-                    local value = process_line(chunk, start, lesc, marker, snippet, whitespace)
+                    local ctx = {chunk=chunk, start=start, snippet=snippet, line=line}
+                    local value = process_line(lesc, marker, whitespace, ctx)
                     local l = #value
                     for i = 1, l do
                         out[#out + 1] = start
