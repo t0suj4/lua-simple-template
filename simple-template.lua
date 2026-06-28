@@ -259,7 +259,6 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
     local allow_multiblock_trailing = opt.allow_multiblock_trailing or false
 
     local errlevel2 = errlevel + 2
-    local line
 
     local function resolve(loaded_vars, escape_rules, esc, marker, ctx)
         local replacement = loaded_vars[marker]
@@ -284,7 +283,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                 return nil, nil, {ctx.snippet}
             else
                 -- callback
-                replacement = undefined_policy.value(ctx.start, marker, esc, esc_rules, ctx.chunk, line, ctx.snippet)
+                replacement = undefined_policy.value(ctx.start, marker, esc, esc_rules, ctx.chunk, ctx.line, ctx.snippet)
                 if type(replacement) ~= "table" then
                     error("Novar callback should return a table", errlevel2)
                 end
@@ -296,7 +295,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                 error("Got callback chain too deep", errlevel2)
             end
             limit = limit - 1
-            replacement = replacement[2](ctx.start, marker, esc, esc_rules, ctx.chunk, line, ctx.snippet)
+            replacement = replacement[2](ctx.start, marker, esc, esc_rules, ctx.chunk, ctx.line, ctx.snippet)
             -- Not type checking contents here
             if type(replacement) ~= "table" then
                 error("Var callback should return a table", errlevel2)
@@ -335,9 +334,8 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             return line:match(pattern, pos)
         end
     end
-    for l in line_iter do
-        line = l
-        local scan = create_scanner(l, ANCHORED)
+    for line in line_iter do
+        local scan = create_scanner(line, ANCHORED)
         -- Eliminate n^2 scan
         local at = line:find("--[[", 1, true)
         if not at then
