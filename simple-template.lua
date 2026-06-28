@@ -358,36 +358,39 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
 
     local pos
     local function create_scanner(line, begin)
-        local function scan(pattern, at)
-            local lsp, lesc, marker, resc, rsp, endpos = line:match(pattern, at)
-            if not lsp then
-                at = line:find("--[[", at + 4, true)
-                if at then
-                    return scan(pattern, at)
-                else
-                    return nil, nil
+        local function next_match(pattern)
+            local function scan(pattern, at)
+                local lsp, lesc, marker, resc, rsp, endpos = line:match(pattern, at)
+                if not lsp then
+                    at = line:find("--[[", at + 4, true)
+                    if at then
+                        return scan(pattern, at)
+                    else
+                        return nil, nil
+                    end
                 end
-            end
-            if lsp:len() > 1 or rsp:len() > 1 then
-                error("At most 1 separating space allowed, to disable pattern delete a @", errlevel)
-            elseif lesc ~= resc then
-                error("Escape marker differs '" .. lesc .. "' ~= '" .. resc .. "'", errlevel)
-            end
+                if lsp:len() > 1 or rsp:len() > 1 then
+                    error("At most 1 separating space allowed, to disable pattern delete a @", errlevel)
+                elseif lesc ~= resc then
+                    error("Escape marker differs '" .. lesc .. "' ~= '" .. resc .. "'", errlevel)
+                end
 
-            local chunk = line:sub(pos, endpos - 1)
-            local start = line:sub(pos, at - 1)
-            local snippet = line:sub(at, endpos - 1)
-            local ctx = {chunk=chunk, start=start, snippet=snippet, line=line}
-            at = line:find("--[[", endpos, true)
-            pos = endpos
-            local m = {lesc, marker, start, ctx}
-            return at, m
+                local chunk = line:sub(pos, endpos - 1)
+                local start = line:sub(pos, at - 1)
+                local snippet = line:sub(at, endpos - 1)
+                local ctx = {chunk=chunk, start=start, snippet=snippet, line=line}
+                at = line:find("--[[", endpos, true)
+                pos = endpos
+                local m = {lesc, marker, start, ctx}
+                return at, m
+            end
+            return scan, pattern, begin
         end
         local function tail()
             return line:sub(pos)
         end
         pos = 1
-        return scan, tail, begin
+        return next_match, tail, begin
     end
 
     local function emit(start, values)
@@ -407,11 +410,12 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         if not begin then
             sink:write(line, "\n")
         else
-            local scan, tail, at = create_scanner(line, begin)
+            local next_match, tail = create_scanner(line, begin)
+            local scan, pattern, at = next_match(TEMPLATE_PATTERN)
             local line_is_block = false
             while at do
                 local m
-                at, m = scan(TEMPLATE_PATTERN, at)
+                at, m = scan(pattern, at)
                 if m then
                     local values, block = resolve_values(m)
                     line_is_block = line_is_block or block
