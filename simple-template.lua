@@ -341,7 +341,12 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         local function scan(at, pos, pattern)
             local lsp, lesc, marker, resc, rsp, endpos = line:match(pattern, at)
             if not lsp then
-                return line:find("--[[", at + 4, true), pos
+                at = line:find("--[[", at + 4, true)
+                if at then
+                    return scan(at, pos, pattern)
+                else
+                    return nil, pos
+                end
             end
             if lsp:len() > 1 or rsp:len() > 1 then
                 error("At most 1 separating space allowed, to disable pattern delete a @", errlevel)
