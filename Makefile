@@ -62,5 +62,6 @@ publish: lint test
 	else \
 	  git tag -s "v$(MODVER)" -m "v$(MODVER)" 2>/dev/null || git tag "v$(MODVER)"; \
 	fi
-	git push --follow-tags origin HEAD
+	git push origin HEAD
+	git push origin "v$(MODVER)"
 	luarocks upload $(ROCKSPEC) $${LUAROCKS_API_KEY:+--api-key=$$LUAROCKS_API_KEY}
