@@ -383,8 +383,7 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             local ctx = {chunk=chunk, start=start, snippet=snippet, line=line}
             at = line:find("--[[", endpos, true)
             pos = endpos
-            local m = {lesc, marker, start, ctx}
-            return at or line:len(), m
+            return at or line:len(), {lesc, marker, start, ctx}
         end
         return scan, pattern, begin
     end
