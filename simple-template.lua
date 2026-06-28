@@ -292,9 +292,24 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         end
     end
 
-    local function resolve(loaded_vars, escape_rules, esc, marker, ctx)
+    local function resolve_callbacks(replacement, marker, esc, esc_rules, ctx, limit)
+        if limit <= 0 then
+            error("Got callback chain too deep", errlevel2)
+        end
+        if replacement[1] ~= AS_CALLBACK then
+            return replacement
+        end
+        limit = limit - 1
+        local rep = replacement[2](ctx.start, marker, esc, esc_rules, ctx.chunk, ctx.line, ctx.snippet)
+        -- Not type checking contents here
+        if type(rep) ~= "table" then
+            error(replacement[3] .. " callback should return a table", errlevel2)
+        end
+        return resolve_callbacks(rep, marker, esc, esc_rules, ctx, limit - 1)
+    end
+
+    local function resolve_vars(loaded_vars, marker)
         local replacement = loaded_vars[marker]
-        local esc_rules = resolve_escape(escape_rules, esc)
 
         if not replacement then
             if undef_policy.action == "error" then
@@ -307,22 +322,6 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
             replacement = undef_policy.value
         end
 
-        local function resolve_callbacks(replacement, marker, esc, esc_rules, ctx, limit)
-            if limit <= 0 then
-                error("Got callback chain too deep", errlevel2)
-            end
-            if replacement[1] ~= AS_CALLBACK then
-                return replacement
-            end
-            limit = limit - 1
-            local rep = replacement[2](ctx.start, marker, esc, esc_rules, ctx.chunk, ctx.line, ctx.snippet)
-            -- Not type checking contents here
-            if type(rep) ~= "table" then
-                error(replacement[3] .. " callback should return a table", errlevel2)
-            end
-            return resolve_callbacks(rep, marker, esc, esc_rules, ctx, limit - 1)
-        end
-        replacement = resolve_callbacks(replacement, marker, esc, esc_rules, ctx, 50)
         return replacement, esc_rules, nil
     end
 
@@ -376,13 +375,10 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
                 local esc, marker, ctx, endpos = scan(at, pos)
                 if esc then
                     local whitespace = ctx.start:find("%S") ~= nil
-                    local replacement, esc_rules, retval = resolve(loaded_vars, escape_rules, esc, marker, ctx)
-                    local value
-                    if retval then
-                        value = retval
-                    else
-                        value = substitute(replacement, esc_rules, whitespace, ctx)
-                    end
+                    local esc_rules = resolve_escape(escape_rules, esc)
+                    local replacement = resolve_vars(loaded_vars, marker)
+                    replacement = resolve_callbacks(replacement, marker, esc, esc_rules, ctx, 50)
+                    local value = substitute(replacement, esc_rules, whitespace, ctx)
 
                     local l = #value
                     for i = 1, l do
