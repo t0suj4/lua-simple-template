@@ -221,7 +221,12 @@ local function load_escape_rules(escape, errlevel)
     return {process_escape_rule(escape, errlevel + 1)}
 end
 
+local ESCAPE_PASSTHROUGH = { function(text) return text end }
+
 local function apply_escaping(text, rules)
+    if rules == ESCAPE_PASSTHROUGH then
+        return text
+    end
     for _, rule in ipairs(rules) do
         text = rule(text)
     end
@@ -260,7 +265,10 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         local replacement = loaded_vars[marker]
         local esc_rules = escape_rules[esc]
 
-        if esc ~= "" and not esc_rules then
+        if esc == "" then
+            esc_rules = ESCAPE_PASSTHROUGH
+        end
+        if not esc_rules then
             error("Unknown escape rule " .. esc, errlevel2)
         elseif not replacement then
             if undefined_policy.action == "error" then
@@ -308,24 +316,15 @@ local function do_render(line_iter, sink, loaded_vars, opt, errlevel)
         if l == 1 or whitespace then
             if l > 1 then
                 error("Got " .. #replacement .. " lines in an inline expansion", errlevel2)
-            elseif esc ~= "" then
-                return {apply_escaping(replacement[1], esc_rules)}
-            else
-                return {replacement[1]}
             end
+            return {apply_escaping(replacement[1], esc_rules)}
         else
             local parts = {}
             if not allow_multiblock_trailing and ctx.line:len() > ctx.chunk:len() then
                 error("Trailing text after block: '" .. ctx.line:sub(ctx.chunk:len() + 1) .. "'", errlevel2)
             end
-            if esc ~= "" then
-                for _, rep in ipairs(replacement) do
-                    parts[#parts + 1] = apply_escaping(rep, esc_rules)
-                end
-            else
-                for _, rep in ipairs(replacement) do
-                    parts[#parts + 1] = rep
-                end
+            for _, rep in ipairs(replacement) do
+                parts[#parts + 1] = apply_escaping(rep, esc_rules)
             end
             return parts
         end
